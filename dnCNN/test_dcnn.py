@@ -5,11 +5,24 @@ import os
 import numpy as np
 import torch
 import torchvision
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from models.dncnn import DnCNN
 
+
 if __name__ == '__main__':
     # Runs pretrained dnCNN on test img
+
+    # sigma = torch.full((1,1,1,1), 15/255.)
+    # m = sigma.repeat(1, 1, 8, 12)
+    # temp = torch.arange(0, 96).view(8, 12)
+    # temp = torch.stack([temp, temp + 200, temp - 200], dim=0)
+    # temp = temp.unsqueeze(dim=0)
+    # input_view = temp.contiguous().view(1, 3, 4, 2, 6, 2)
+    # unshuffle_out = input_view.permute(0, 1, 3, 5, 2, 4).contiguous()
+    # out = unshuffle_out.view(1, 12, 4, 6)
+
+    # restored = F.pixel_shuffle(out, 2)
 
     model_path = 'dncnn_color_blind.pth'
     # From Kai Zhang, dnnn_color_blind is nb=20
@@ -24,9 +37,6 @@ if __name__ == '__main__':
     for name, param in model.named_parameters():
         print(name)
         params[name] = param
-
-    import pdb
-    pdb.set_trace()
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()

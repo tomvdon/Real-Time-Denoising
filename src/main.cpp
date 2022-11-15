@@ -4,6 +4,10 @@
 
 #include <chrono>
 
+#include <cudnn.h>
+
+#include "opencv2\opencv.hpp"
+
 static std::string startTimeString;
 
 static double time_duration = 0.0;
@@ -31,9 +35,115 @@ int iteration;
 int width;
 int height;
 
+#define checkCUDNN(expression)                               \
+  {                                                          \
+    cudnnStatus_t status = (expression);                     \
+    if (status != CUDNN_STATUS_SUCCESS) {                    \
+      std::cerr << "Error on line " << __LINE__ << ": "      \
+                << cudnnGetErrorString(status) << std::endl; \
+      std::exit(EXIT_FAILURE);                               \
+    }                                                        \
+  }
+
+
+cv::Mat load_image(const char* image_path) {
+	cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
+	image.convertTo(image, CV_32FC3);
+	cv::normalize(image, image, 0, 1, cv::NORM_MINMAX);
+	return image;
+}
+
+void tryCUDNN() {
+	cudnnHandle_t cudnn;
+	cudnnCreate(&cudnn);
+
+	cv::Mat image = load_image("image.png");
+
+	cudnnTensorDescriptor_t input_descriptor;
+	checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
+	checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,
+		/*format=*/CUDNN_TENSOR_NHWC,
+		/*dataType=*/CUDNN_DATA_FLOAT,
+		/*batch_size=*/1,
+		/*channels=*/3,
+		/*image_height=*/image.rows,
+		/*image_width=*/image.cols));
+
+	cudnnTensorDescriptor_t output_descriptor;
+	checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));
+	checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,
+		/*format=*/CUDNN_TENSOR_NHWC,
+		/*dataType=*/CUDNN_DATA_FLOAT,
+		/*batch_size=*/1,
+		/*channels=*/3,
+		/*image_height=*/image.rows,
+		/*image_width=*/image.cols));
+
+	cudnnFilterDescriptor_t kernel_descriptor;
+	checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
+	checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
+		/*dataType=*/CUDNN_DATA_FLOAT,
+		/*format=*/CUDNN_TENSOR_NCHW,
+		/*out_channels=*/3,
+		/*in_channels=*/3,
+		/*kernel_height=*/3,
+		/*kernel_width=*/3));
+
+	cudnnConvolutionDescriptor_t convolution_descriptor;
+	checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));
+	checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,
+		/*pad_height=*/1,
+		/*pad_width=*/1,
+		/*vertical_stride=*/1,
+		/*horizontal_stride=*/1,
+		/*dilation_height=*/1,
+		/*dilation_width=*/1,
+		/*mode=*/CUDNN_CROSS_CORRELATION,
+		/*computeType=*/CUDNN_DATA_FLOAT));
+
+	cudnnConvolutionFwdAlgoPerf_t convolution_algorithm;
+	checkCUDNN(
+		cudnnFindConvolutionForwardAlgorithm(cudnn,
+			input_descriptor,
+			kernel_descriptor,
+			convolution_descriptor,
+			output_descriptor,
+			CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+			/*memoryLimitInBytes=*/0,
+			&convolution_algorithm));
+
+	//checkCUDNN(
+	//	cudnnFindConvolutionForwardAlgorithm(cudnn,
+	//		input_descriptor,
+	//		kernel_descriptor,
+	//		convolution_descriptor,
+	//		output_descriptor,
+	//		CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+	//		0,
+	//		&convolution_algorithm
+	//	));
+	
+
+	//size_t workspace_bytes = 0;
+	//checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
+	//	input_descriptor,
+	//	kernel_descriptor,
+	//	convolution_descriptor,
+	//	output_descriptor,
+	//	convolution_algorithm,
+	//	&workspace_bytes));
+	//std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+	//	<< std::endl;
+
+
+}
+
+
+
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
+
 
 int main(int argc, char** argv) {
 	startTimeString = currentTimeString();
@@ -86,6 +196,8 @@ int main(int argc, char** argv) {
 
 	// GLFW main loop
 	mainLoop();
+
+
 
 	return 0;
 }
@@ -232,3 +344,5 @@ void mousePositionCallback(GLFWwindow* window, double xpos, double ypos) {
 	lastX = xpos;
 	lastY = ypos;
 }
+
+

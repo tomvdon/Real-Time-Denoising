@@ -174,6 +174,7 @@ void tryCUDNN() {
 
 	// Find fastest conv algorithim
 	cudnnConvolutionFwdAlgoPerf_t convolution_algorithm;
+	int num_algs = 0;
 	checkCUDNN(
 		cudnnFindConvolutionForwardAlgorithm(handle,
 			input_descriptor,
@@ -181,7 +182,7 @@ void tryCUDNN() {
 			convolution_descriptor,
 			output_descriptor,
 			/*RequestedNumAlgs*/1,
-			/*ReturnedNumAlgs*/0,
+			/*ReturnedNumAlgs*/&num_algs,
 			&convolution_algorithm));
 
 	// Find workspace size needed

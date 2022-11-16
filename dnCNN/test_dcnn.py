@@ -35,17 +35,17 @@ if __name__ == '__main__':
     for k, v in model.named_parameters():
         v.requires_grad = False
     params = {}
-    if not os.path.exists('weights/'):
-        os.mkdir('weights/')
-    for name, param in model.named_parameters():
-        print(name)
-        params[name] = param
-        name_list = name.split('.')
-        if name_list[-1] == 'weight':
-            # NOTE Might need to do some reshaping or permuting here?
-            param = torch.flatten(param, start_dim=0, end_dim=1) 
-            param = torch.flatten(param, start_dim=1, end_dim=2)
-        np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+    # if not os.path.exists('weights/'):
+    #     os.mkdir('weights/')
+    # for name, param in model.named_parameters():
+    #     print(name)
+    #     params[name] = param
+    #     name_list = name.split('.')
+    #     if name_list[-1] == 'weight':
+    #         # NOTE Might need to do some reshaping or permuting here?
+    #         param = torch.flatten(param, start_dim=0, end_dim=1) 
+    #         param = torch.flatten(param, start_dim=1, end_dim=2)
+    #     np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()

@@ -5,7 +5,6 @@
 #include <chrono>
 
 #include <cudnn.h>
-
 #include "opencv2\opencv.hpp"
 
 static std::string startTimeString;
@@ -35,6 +34,7 @@ int iteration;
 int width;
 int height;
 
+// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 #define checkCUDNN(expression)                               \
   {                                                          \
     cudnnStatus_t status = (expression);                     \
@@ -45,20 +45,40 @@ int height;
     }                                                        \
   }
 
-
 cv::Mat load_image(const char* image_path) {
+	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
 	image.convertTo(image, CV_32FC3);
 	cv::normalize(image, image, 0, 1, cv::NORM_MINMAX);
 	return image;
 }
 
+void save_image(const char* output_filename,
+	float* buffer,
+	int height,
+	int width) {
+	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
+	cv::Mat output_image(height, width, CV_32FC3, buffer);
+	// Make negative values zero.
+	cv::threshold(output_image,
+		output_image,
+		/*threshold=*/0,
+		/*maxval=*/0,
+		cv::THRESH_TOZERO);
+	cv::normalize(output_image, output_image, 0.0, 255.0, cv::NORM_MINMAX);
+	output_image.convertTo(output_image, CV_8UC3);
+	cv::imwrite(output_filename, output_image);
+}
+
 void tryCUDNN() {
-	cudnnHandle_t cudnn;
-	cudnnCreate(&cudnn);
+	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 
-	cv::Mat image = load_image("image.png");
+	cudnnHandle_t handle;
+	cudnnCreate(&handle);
 
+	cv::Mat image = load_image("../img/tensorflow.png");
+
+	// Describe input tensor
 	cudnnTensorDescriptor_t input_descriptor;
 	checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
 	checkCUDNN(cudnnSetTensor4dDescriptor(input_descriptor,
@@ -69,6 +89,7 @@ void tryCUDNN() {
 		/*image_height=*/image.rows,
 		/*image_width=*/image.cols));
 
+	// Describe output tensor
 	cudnnTensorDescriptor_t output_descriptor;
 	checkCUDNN(cudnnCreateTensorDescriptor(&output_descriptor));
 	checkCUDNN(cudnnSetTensor4dDescriptor(output_descriptor,
@@ -79,6 +100,7 @@ void tryCUDNN() {
 		/*image_height=*/image.rows,
 		/*image_width=*/image.cols));
 
+	// Describe convolutional filter shape
 	cudnnFilterDescriptor_t kernel_descriptor;
 	checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
 	checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
@@ -89,6 +111,7 @@ void tryCUDNN() {
 		/*kernel_height=*/3,
 		/*kernel_width=*/3));
 
+	// Describe convolution properties
 	cudnnConvolutionDescriptor_t convolution_descriptor;
 	checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));
 	checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,
@@ -101,50 +124,111 @@ void tryCUDNN() {
 		/*mode=*/CUDNN_CROSS_CORRELATION,
 		/*computeType=*/CUDNN_DATA_FLOAT));
 
+	// Find fastest conv algorithim
 	cudnnConvolutionFwdAlgoPerf_t convolution_algorithm;
 	checkCUDNN(
-		cudnnFindConvolutionForwardAlgorithm(cudnn,
+		cudnnFindConvolutionForwardAlgorithm(handle,
 			input_descriptor,
 			kernel_descriptor,
 			convolution_descriptor,
 			output_descriptor,
-			CUDNN_CONVOLUTION_FWD_ALGO_FFT,
-			/*memoryLimitInBytes=*/0,
+			/*RequestedNumAlgs*/1,
+			/*ReturnedNumAlgs*/0,
 			&convolution_algorithm));
 
-	//checkCUDNN(
-	//	cudnnFindConvolutionForwardAlgorithm(cudnn,
-	//		input_descriptor,
-	//		kernel_descriptor,
-	//		convolution_descriptor,
-	//		output_descriptor,
-	//		CUDNN_CONVOLUTION_FWD_ALGO_FFT,
-	//		0,
-	//		&convolution_algorithm
-	//	));
-	
+	// Find workspace size needed
+	size_t workspace_bytes = 0;
+	checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(handle,
+		input_descriptor,
+		kernel_descriptor,
+		convolution_descriptor,
+		output_descriptor,
+		convolution_algorithm.algo,
+		&workspace_bytes));
+	std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
+		<< std::endl;
 
-	//size_t workspace_bytes = 0;
-	//checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn,
-	//	input_descriptor,
-	//	kernel_descriptor,
-	//	convolution_descriptor,
-	//	output_descriptor,
-	//	convolution_algorithm,
-	//	&workspace_bytes));
-	//std::cerr << "Workspace size: " << (workspace_bytes / 1048576.0) << "MB"
-	//	<< std::endl;
+	// Allocatate buffers on device and copy/memset
+	void* d_workspace{ nullptr };
+	cudaMalloc(&d_workspace, workspace_bytes);
 
+	int image_bytes = 1 * 3 * image.rows * image.cols * sizeof(float); 
 
+	float* d_input{ nullptr };
+	cudaMalloc(&d_input, image_bytes);
+	cudaMemcpy(d_input, image.ptr<float>(0), image_bytes, cudaMemcpyHostToDevice);
+
+	float* d_output{ nullptr };
+	cudaMalloc(&d_output, image_bytes); // Normally you would use cudnnGetConvolution2dForwardOutputDim to know the output size but we know it will be the same for this example
+	cudaMemset(d_output, 0, image_bytes);
+
+	// Mystery kernel
+	const float kernel_template[3][3] = {
+	  {1,  1, 1},
+	  {1, -8, 1},
+	  {1,  1, 1}
+	};
+
+	float h_kernel[3][3][3][3];
+	for (int kernel = 0; kernel < 3; ++kernel) {
+		for (int channel = 0; channel < 3; ++channel) {
+			for (int row = 0; row < 3; ++row) {
+				for (int column = 0; column < 3; ++column) {
+					h_kernel[kernel][channel][row][column] = kernel_template[row][column];
+				}
+			}
+		}
+	}
+
+	float* d_kernel{ nullptr };
+	cudaMalloc(&d_kernel, sizeof(h_kernel));
+	cudaMemcpy(d_kernel, h_kernel, sizeof(h_kernel), cudaMemcpyHostToDevice);
+
+	// Do convolution forward
+	const float alpha = 1, beta = 0;
+	checkCUDNN(cudnnConvolutionForward(handle,
+		&alpha,
+		input_descriptor,
+		d_input,
+		kernel_descriptor,
+		d_kernel,
+		convolution_descriptor,
+		convolution_algorithm.algo,
+		d_workspace,
+		workspace_bytes,
+		&beta,
+		output_descriptor,
+		d_output));
+
+	// Retrive output from device
+	float* h_output = new float[image_bytes];
+	cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
+	// Save img
+	save_image("../img/cudnn-out.png", h_output, height, width);
+
+	// Free up stuff
+	delete[] h_output;
+	cudaFree(d_kernel);
+	cudaFree(d_input);
+	cudaFree(d_output);
+	cudaFree(d_workspace);
+
+	cudnnDestroyTensorDescriptor(input_descriptor);
+	cudnnDestroyTensorDescriptor(output_descriptor);
+	cudnnDestroyFilterDescriptor(kernel_descriptor);
+	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 }
-
-
 
 //-------------------------------
 //-------------MAIN--------------
 //-------------------------------
 
+int main(int argc, char** argv) {
+	tryCUDNN();
+	std::cout << "Success!" << std::endl;
+}
 
+/*
 int main(int argc, char** argv) {
 	startTimeString = currentTimeString();
 
@@ -201,7 +285,7 @@ int main(int argc, char** argv) {
 
 	return 0;
 }
-
+*/
 void saveImage() {
 	float samples = iteration;
 	// output image file

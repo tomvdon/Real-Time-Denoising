@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 
-project(cis565_path_tracer)
+project(cis565_final)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -62,6 +62,27 @@ set(GLM_ROOT_DIR "external")
 find_package(GLM REQUIRED)
 include_directories(${GLM_INCLUDE_DIRS})
 
+#cudnn include and lib setup
+
+
+#set(MY_PATH "PATH=%PATH%" ${CMAKE_CURRENT_SOURCE_DIR}\\external\\lib\\CuDNN\\bin ${MY_CUSTOM_PATH})
+
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external\\include\\CuDNN)
+#link_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external\\lib\\CuDNN\\bin)
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external\\lib\\CuDNN\\lib\\x64)
+link_libraries(cudnn)
+
+#zlib
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external\\lib\\zlib)
+link_libraries(zlibwapi)
+
+#opencv
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external)
+link_directories( ${CMAKE_CURRENT_SOURCE_DIR}\\external\\vc15\\lib)
+link_libraries( opencv_world460 opencv_world460d)
+
+
 set(headers
     src/main.h
     src/image.h
@@ -111,6 +132,7 @@ list(SORT sources)
 source_group(Headers FILES ${headers})
 source_group(Sources FILES ${sources})
 
+
 #add_subdirectory(src/ImGui)
 #add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction
 
@@ -119,3 +141,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     ${LIBRARIES}
     #stream_compaction  # TODO: uncomment if using your stream compaction
     )
+
+#setup environment properties
+set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_ENVIRONMENT "PATH=%PATH%;${CMAKE_CURRENT_SOURCE_DIR}\\external\\dll")

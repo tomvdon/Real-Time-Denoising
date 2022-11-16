@@ -1,5 +1,6 @@
 #include "main.h"
 #include "preview.h"
+#include "utilities.h"
 #include <cstring>
 
 #include <chrono>
@@ -48,8 +49,18 @@ int height;
 cv::Mat load_image(const char* image_path) {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
+
+	if (image.empty()) {
+		std::cout << "Could not read the image: " << image_path << std::endl;
+		return image;
+	}
+
 	image.convertTo(image, CV_32FC3);
 	cv::normalize(image, image, 0, 1, cv::NORM_MINMAX);
+
+	cv::imshow("Display window", image);
+	int k = cv::waitKey(0); // Wait for a keystroke in the window
+
 	return image;
 }
 
@@ -70,14 +81,51 @@ void save_image(const char* output_filename,
 	cv::imwrite(output_filename, output_image);
 }
 
+struct filter {
+	int in_channels;
+	int out_channels;
+	int height;
+	int width;
+};
+
+float* read_filter(const filter& f, std::string f_path) {
+	float* arr = (float*) malloc(sizeof(float) * f.in_channels * f.out_channels * f.height * f.width);
+	std::ifstream fp_in;
+	fp_in.open(f_path);
+	if (!fp_in.is_open()) {
+		std::cout << "Error reading from file - aborting!" << std::endl;
+		throw;
+	}
+	for (int i = 0; i < f.out_channels; ++i) {
+		for (int j = 0; j < f.in_channels; ++j) {
+			// Credit https://stackoverflow.com/questions/14265581/parse-split-a-string-in-c-using-string-delimiter-standard-c
+			std::string line;
+			utilityCore::safeGetline(fp_in, line);
+			size_t pos = 0;
+			std::string token;
+			std::string delimiter = ",";
+			// TODO Fix this
+			for (int k = 0; k < f.width; ++k) {
+				pos = line.find(delimiter);
+				token = line.substr(0, pos);
+				float t = std::stof(token);
+				std::cout << t << std::endl;
+				arr[i * f.height * f.width + j * f.width + k] = t;
+				line.erase(0, pos + delimiter.length());
+			}
+		}
+	}
+	return arr;
+}
+
 void tryCUDNN() {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
-
+	std::cout << "Running" << std::endl;
 	cudnnHandle_t handle;
 	cudnnCreate(&handle);
 
-	cv::Mat image = load_image("../img/tensorflow.png");
-
+	cv::Mat image = load_image("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\tensorflow.png");
+	std::cout << "Image has shape " << image.rows << ", " << image.cols << std::endl;
 	// Describe input tensor
 	cudnnTensorDescriptor_t input_descriptor;
 	checkCUDNN(cudnnCreateTensorDescriptor(&input_descriptor));
@@ -281,11 +329,9 @@ int main(int argc, char** argv) {
 	// GLFW main loop
 	mainLoop();
 
-
-
 	return 0;
-}
-*/
+}*/
+
 void saveImage() {
 	float samples = iteration;
 	// output image file

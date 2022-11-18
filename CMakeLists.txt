@@ -80,8 +80,6 @@ link_libraries(zlibwapi)
 #opencv
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}\\external)
 link_directories( ${CMAKE_CURRENT_SOURCE_DIR}\\external\\vc15\\lib)
-link_libraries( opencv_world460 opencv_world460d)
-
 
 set(headers
     src/main.h
@@ -144,3 +142,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 #setup environment properties
 set_target_properties(${PROJECT_NAME} PROPERTIES VS_DEBUGGER_ENVIRONMENT "PATH=%PATH%;${CMAKE_CURRENT_SOURCE_DIR}\\external\\dll")
+
+
+
+target_link_libraries(${CMAKE_PROJECT_NAME} debug opencv_world460d) 
+target_link_libraries(${CMAKE_PROJECT_NAME} optimized opencv_world460)

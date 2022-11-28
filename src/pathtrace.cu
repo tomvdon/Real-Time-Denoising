@@ -16,14 +16,17 @@
 
 #include "device_launch_parameters.h"
 #include <thrust/partition.h>
+#include <filesystem>
+
+#include <boost/serialization/base_object.hpp>
 
 #define DIRECT 0
 #define CACHE_FIRST_BOUNCE 1
 #define SORT_MATERIAL 0
 #define COMPACTION 1
 #define DEPTH_OF_FIELD 0
-#define ANTI_ALIASING 1
-#define BOUNDING_BOX 0
+#define ANTI_ALIASING 0
+#define BOUNDING_BOX 1
 
 
 
@@ -58,6 +61,29 @@ thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int de
 	return thrust::default_random_engine(h);
 }
 
+__global__ void generateGBuffer(
+	int num_paths,
+	ShadeableIntersection* shadeableIntersections,
+	PathSegment* pathSegments,
+	GBufferPixel* gBuffer) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < num_paths)
+	{
+
+		gBuffer[idx].t = shadeableIntersections[idx].t;
+		if (gBuffer[idx].t != -1.0f)
+		{
+			gBuffer[idx].normal = shadeableIntersections[idx].surfaceNormal;
+			gBuffer[idx].position = getPointOnRay(pathSegments[idx].ray, shadeableIntersections[idx].t);
+		}
+		else
+		{
+			gBuffer[idx].normal = glm::vec3(0.0f);
+			gBuffer[idx].position = glm::vec3(0.0f);
+		}
+
+	}
+}
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 	int iter, glm::vec3* image) {
@@ -88,6 +114,7 @@ static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
+static GBufferPixel* dev_gBuffer = NULL;
 
 // TODO: static variables for device memory, any extra info you need, etc
 //for caching first bounce
@@ -125,6 +152,8 @@ void pathtraceInit(Scene* scene) {
 	cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
 	// TODO: initialize any extra device memeory you need
+	cudaMalloc(&dev_gBuffer, pixelcount * sizeof(GBufferPixel));
+
 #if CACHE_FIRST_BOUNCE
 	cudaMalloc(&dev_firstBounce, pixelcount * sizeof(ShadeableIntersection));
 	cudaMemset(dev_firstBounce, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -143,6 +172,7 @@ void pathtraceFree() {
 	cudaFree(dev_materials);
 	cudaFree(dev_intersections);
 	// TODO: clean up any extra device memory you created
+	cudaFree(dev_gBuffer);
 #if CACHE_FIRST_BOUNCE
 	cudaFree(dev_firstBounce);
 	cudaFree(dev_first_paths);
@@ -672,7 +702,10 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 #endif
-
+		if (depth == 0 && iter == 1) {
+			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
+			//saveGBuffer(dev_gBuffer);
+		}
 		depth++;
 
 		// TODO:

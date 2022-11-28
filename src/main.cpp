@@ -7,6 +7,10 @@
 
 #include <cudnn.h>
 #include "opencv2\opencv.hpp"
+#include <filesystem>
+
+#define GEN_DATA 0
+
 
 static std::string startTimeString;
 
@@ -18,6 +22,7 @@ static bool rightMousePressed = false;
 static bool middleMousePressed = false;
 static double lastX;
 static double lastY;
+static unsigned int camera_angle = 0;
 
 static bool camchanged = true;
 static float dtheta = 0, dphi = 0;
@@ -124,7 +129,7 @@ void tryCUDNN() {
 	cudnnHandle_t handle;
 	cudnnCreate(&handle);
 
-	cv::Mat image = load_image("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\tensorflow.png");
+	cv::Mat image = load_image("..\\img\\tensorflow.png");
 	std::cout << "Image has shape " << image.rows << ", " << image.cols << std::endl;
 	// Describe input tensor
 	cudnnTensorDescriptor_t input_descriptor;
@@ -253,11 +258,13 @@ void tryCUDNN() {
 	float* h_output = new float[image_bytes];
 	cudaMemcpy(h_output, d_output, image_bytes, cudaMemcpyDeviceToHost);
 	// Save img
+	width = image.cols;
+	height = image.rows;
 	save_image("../img/cudnn-out.png", h_output, height, width);
 
 	// Free up stuff
 	delete[] h_output;
-	cudaFree(d_kernel);
+	cudaFree(d_kernel); 
 	cudaFree(d_input);
 	cudaFree(d_output);
 	cudaFree(d_workspace);
@@ -272,12 +279,12 @@ void tryCUDNN() {
 //-------------MAIN--------------
 //-------------------------------
 
-int main(int argc, char** argv) {
-	tryCUDNN();
-	std::cout << "Success!" << std::endl;
-}
+//int main(int argc, char** argv) {
+//	tryCUDNN();
+//	std::cout << "Success!" << std::endl;
+//}
 
-/*
+
 int main(int argc, char** argv) {
 	startTimeString = currentTimeString();
 
@@ -301,6 +308,7 @@ int main(int argc, char** argv) {
 	//renderState->iterations = 100;
 
 	Camera& cam = renderState->camera;
+	Camera& og_cam = renderState->og_camera;
 	width = cam.resolution.x;
 	height = cam.resolution.y;
 
@@ -319,6 +327,7 @@ int main(int argc, char** argv) {
 	theta = glm::acos(glm::dot(glm::normalize(viewZY), glm::vec3(0, 1, 0)));
 	ogLookAt = cam.lookAt;
 	zoom = glm::length(cam.position - ogLookAt);
+	og_cam = cam;
 
 	// Initialize CUDA and GL components
 	init();
@@ -331,7 +340,7 @@ int main(int argc, char** argv) {
 	mainLoop();
 
 	return 0;
-}*/
+}
 
 void saveImage() {
 	float samples = iteration;
@@ -350,6 +359,34 @@ void saveImage() {
 	std::ostringstream ss;
 	ss << filename << "." << startTimeString << "." << samples << "samp";
 	filename = ss.str();
+	filename = "../training_data/" + filename;
+
+	// CHECKITOUT
+	img.savePNG(filename);
+	//img.saveHDR(filename);  // Save a Radiance HDR file
+}
+
+void saveTrainingImage() {
+	float samples = iteration;
+	// output image file
+	image img(width, height);
+
+	for (int x = 0; x < width; x++) {
+		for (int y = 0; y < height; y++) {
+			int index = x + (y * width);
+			glm::vec3 pix = renderState->image[index];
+			img.setPixel(width - 1 - x, y, glm::vec3(pix) / samples);
+		}
+	}
+
+	std::string filename = renderState->imageName;
+	std::ostringstream ss;
+	filesystem::create_directory("../training_data");
+	filesystem::create_directory("../training_data/" + filename);
+	filesystem::create_directory("../training_data/" + filename + "/" + std::to_string(camera_angle));
+	ss << "../training_data/" + filename + "/" + std::to_string(camera_angle) + "/" + filename << ".angle_" << camera_angle << ".spp_" << samples;
+	filename = ss.str();
+	std::cout << filename;
 
 	// CHECKITOUT
 	img.savePNG(filename);
@@ -397,6 +434,12 @@ void runCuda() {
 
 		int frame = 0;
 		pathtrace(pbo_dptr, frame, iteration);
+#if GEN_DATA
+		if (iteration <= 16)
+		{
+			saveTrainingImage();
+		}
+#endif // GEN_DATA
 
 
 		auto end = std::chrono::steady_clock::now();
@@ -407,6 +450,68 @@ void runCuda() {
 	}
 	else {
 		std::cout << "elapsed time to compute: " << time_duration << "s\n";
+#if GEN_DATA
+		saveTrainingImage();
+		//Reset Camera
+		renderState = &scene->state;
+		Camera& cam = renderState->camera;
+		cam = renderState->og_camera;
+
+		glm::vec3 view = cam.view;
+		glm::vec3 up = cam.up;
+		glm::vec3 right = glm::cross(view, up);
+		up = glm::cross(right, view);
+
+		cameraPosition = cam.position;
+
+		// compute phi (horizontal) and theta (vertical) relative 3D axis
+		// so, (0 0 1) is forward, (0 1 0) is up
+		glm::vec3 viewXZ = glm::vec3(view.x, 0.0f, view.z);
+		glm::vec3 viewZY = glm::vec3(0.0f, view.y, view.z);
+		phi = glm::acos(glm::dot(glm::normalize(viewXZ), glm::vec3(0, 0, -1)));
+		theta = glm::acos(glm::dot(glm::normalize(viewZY), glm::vec3(0, 1, 0)));
+		zoom = glm::length(cam.position - ogLookAt);
+
+		cameraPosition.x = zoom * sin(phi) * sin(theta);
+		cameraPosition.y = zoom * cos(theta);
+		cameraPosition.z = zoom * cos(phi) * sin(theta);
+
+		cam.view = -glm::normalize(cameraPosition);
+		glm::vec3 v = cam.view;
+		glm::vec3 u = glm::vec3(0, 1, 0);//glm::normalize(cam.up);
+		glm::vec3 r = glm::cross(v, u);
+		cam.up = glm::cross(r, v);
+		cam.right = r;
+
+		cam.position = cameraPosition;
+		cameraPosition += cam.lookAt;
+		cam.position = cameraPosition;
+
+		//Make a random movment
+		// -1 or 1
+		float movement_sign = std::rand() % 2 == 0 ? 1 : -1;
+		//width TODO: Based on image
+		float x_vel = std::rand() % (500 + 1);
+		//height
+		float y_vel = std::rand() % (500 + 1);
+		float zoom = std::rand() % (11 );
+		std::cout << "X: " << x_vel << std::endl;
+		std::cout << "Y: " << y_vel << std::endl;
+		std::cout << "zoom: " << zoom << std::endl;
+
+		phi -= (movement_sign * x_vel) / width;
+		movement_sign = std::rand() % 2 == 0 ? 1 : -1;
+		theta -= (movement_sign * y_vel) / height;
+		theta = std::fmax(0.001f, std::fmin(theta, PI));
+
+		camchanged = true;
+		camera_angle++;
+		if (camera_angle < 2000)
+		{
+			return;
+		}
+#endif // GEN_DATA
+
 		saveImage();
 		pathtraceFree();
 		cudaDeviceReset();
@@ -451,6 +556,7 @@ void mousePositionCallback(GLFWwindow* window, double xpos, double ypos) {
 		phi -= (xpos - lastX) / width;
 		theta -= (ypos - lastY) / height;
 		theta = std::fmax(0.001f, std::fmin(theta, PI));
+		std::cout << theta << " " << phi << std::endl;
 		camchanged = true;
 	}
 	else if (rightMousePressed) {

@@ -222,7 +222,11 @@ int Scene::loadMaterial(string materialid) {
         return 1;
     }
 }
-
+int Scene::resetCamera()
+{
+    loadCamera();
+    return 1;
+}
 //adapted from https://github.com/tinyobjloader/tinyobjloader/blob/master/loader_example.cc
 //also https://vkguide.dev/docs/chapter-3/obj_loading/
 //int Scene::loadObj(const char* fileName)
@@ -412,7 +416,7 @@ int Scene::loadMesh(const char* fileName)
     std::string warn;
     std::string err;
 
-    char* material_dir = "../scenes";
+    char material_dir[] = "../scenes";
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &m_materials, &warn, &err, fileName, material_dir,
         NULL, true);
     if (!warn.empty())

@@ -129,6 +129,7 @@ struct Camera {
 
 struct RenderState {
     Camera camera;
+    Camera og_camera;
     unsigned int iterations;
     int traceDepth;
     std::vector<glm::vec3> image;
@@ -174,4 +175,10 @@ static AABB Union(const AABB& b1, const AABB& b2) {
 struct Obj {
     AABB box;
     Geom* data;
+};
+
+struct GBufferPixel {
+    float t;
+    glm::vec3 normal;
+    glm::vec3 position;
 };

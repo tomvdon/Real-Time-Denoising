@@ -11,7 +11,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Enable C++11 for host code
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 
 # Set a default build type if none was specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -55,12 +55,18 @@ else(UNIX)
 
     add_definitions(${GLEW_DEFINITIONS})
     include_directories(${GLEW_INCLUDE_DIR} ${GLFW_INCLUDE_DIR})
-    set(LIBRARIES ${GLEW_LIBRARY} ${GLFW_LIBRARY} ${OPENGL_LIBRARY})
+    set(BOOST_ROOT "C:/Boost/boost_1_80_0")
+    find_package(Boost REQUIRED)
+    set(Boost_INCLUDE_DIR "C:/Boost/boost_1_80_0")
+    INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
+
+    set(LIBRARIES ${GLEW_LIBRARY} ${GLFW_LIBRARY} ${OPENGL_LIBRARY} ${Boost_LIBRARY})
 endif(UNIX)
 
 set(GLM_ROOT_DIR "external")
 find_package(GLM REQUIRED)
 include_directories(${GLM_INCLUDE_DIRS})
+
 
 #cudnn include and lib setup
 
@@ -129,7 +135,6 @@ list(SORT sources)
 
 source_group(Headers FILES ${headers})
 source_group(Sources FILES ${sources})
-
 
 #add_subdirectory(src/ImGui)
 #add_subdirectory(stream_compaction)  # TODO: uncomment if using your stream compaction

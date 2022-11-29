@@ -1,5 +1,6 @@
 ### CREDIT TO Kai Zhang: https://github.com/cszn
 ### https://github.com/cszn/KAIR/blob/master/main_test_dncnn.py
+### https://github.com/cszn/KAIR/blob/master/main_test_ffdnet.py
 
 import os
 import numpy as np
@@ -9,6 +10,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import csv
 from models.dncnn import DnCNN
+from models.ffdnet import FFDNet
 
 
 if __name__ == '__main__':
@@ -25,27 +27,49 @@ if __name__ == '__main__':
 
     # restored = F.pixel_shuffle(out, 2)
 
-    model_path = 'dncnn_color_blind.pth'
+    model_path = 'original_dncnn.pth'
     # From Kai Zhang, dnnn_color_blind is nb=20
     # act_mode determines what the actiavation is, for example: BR == batch norm + ReLU
     # R == ReLU, we can ignore batch norm since utils_bnorm.merge_bn was ran, see https://github.com/cszn/KAIR/blob/master/utils/utils_bnorm.py 
     model = DnCNN(in_nc=3, out_nc=3, nc=64, nb=20, act_mode='R')
+    #model = FFDNet(in_nc=3, out_nc=3, nc=96, nb=12, act_mode='R')
     model.load_state_dict(torch.load(model_path), strict=True)
     model.eval()
     for k, v in model.named_parameters():
         v.requires_grad = False
     params = {}
-    # if not os.path.exists('weights/'):
-    #     os.mkdir('weights/')
-    # for name, param in model.named_parameters():
-    #     print(name)
-    #     params[name] = param
-    #     name_list = name.split('.')
-    #     if name_list[-1] == 'weight':
-    #         # NOTE Might need to do some reshaping or permuting here?
-    #         param = torch.flatten(param, start_dim=0, end_dim=1) 
-    #         param = torch.flatten(param, start_dim=1, end_dim=2)
-    #     np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+
+    if not os.path.exists('weights/'):
+        os.mkdir('weights/')
+    for name, param in model.named_parameters():
+        print(name)
+        params[name] = param
+        name_list = name.split('.')
+        if name_list[-1] == 'weight':
+            # NOTE Might need to do some reshaping or permuting here?
+            param = torch.flatten(param, start_dim=0, end_dim=1) 
+            param = torch.flatten(param, start_dim=1, end_dim=2)
+        #np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+
+    #img_path = '../img/tensorflow.png'
+    img_path = 'test.png'
+    #img_path = 'test2.png'
+    img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
+    img = (img / 255.)#[:3]# 0-255 -> 0-1
+    plt.imshow(img.permute(1,2,0))
+    plt.show()
+    # kernel = params['model.0.weight']
+    # bias = params['model.0.bias']
+    # arr = np.genfromtxt('out3.txt', delimiter=',')
+
+    # conv = F.conv2d(img.unsqueeze(dim=0), kernel, padding=(1,1), bias=bias)
+    # conv2 = F.conv2d(img.unsqueeze(dim=0), kernel, padding=(1,1))
+    #arr = arr.reshape(578, 549)
+    # diff = torch.abs(conv[0,0] - torch.from_numpy(arr))
+    # plt.imshow(conv[0,0])
+    # plt.show()
+    # plt.imshow(torch.from_numpy(arr))
+    # plt.show()
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
@@ -55,14 +79,15 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     model.to(device)
 
-    img_path = 'test.png'
-    img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
+    #img_path = 'test2.png'
+    #img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
+    # plt.imshow(img.permute(1,2,0))
+    # plt.show()
 
-    plt.imshow(img.permute(1,2,0))
-    plt.show()
-
-    img = (img / 255.).unsqueeze(dim=0) # 0-255 -> 0-1 and add batch dim
-
+    #img = (img / 255.).unsqueeze(dim=0) # 0-255 -> 0-1 and add batch dim
+    #noise_level_model = 120
+    #sigma = torch.full((1,1,1,1), noise_level_model/255.).float().to(device)
+    #out_img = model(img.to(device), sigma)
     out_img = model(img.to(device))
 
     plt.imshow(out_img.squeeze().permute(1,2,0).cpu())

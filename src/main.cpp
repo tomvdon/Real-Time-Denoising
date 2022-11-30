@@ -9,7 +9,7 @@
 #include "opencv2\opencv.hpp"
 #include <filesystem>
 
-#define GEN_DATA 0
+#define GEN_DATA 1
 
 
 static std::string startTimeString;
@@ -413,6 +413,7 @@ void runCuda() {
 		cam.position = cameraPosition;
 		camchanged = false;
 	}
+	renderState->sceneAngle = camera_angle;
 
 	// Map OpenGL buffer object for writing from CUDA on a single GPU
 	// No data is moved (Win & Linux). When mapped to CUDA, OpenGL should not use this buffer

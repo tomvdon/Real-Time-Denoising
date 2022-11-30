@@ -19,6 +19,10 @@
 #include <filesystem>
 
 #include <boost/serialization/base_object.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/serialization.hpp>
 
 #define DIRECT 0
 #define CACHE_FIRST_BOUNCE 1
@@ -84,6 +88,8 @@ __global__ void generateGBuffer(
 
 	}
 }
+
+
 //Kernel that writes the image to the OpenGL PBO directly.
 __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 	int iter, glm::vec3* image) {
@@ -115,6 +121,7 @@ static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 static GBufferPixel* dev_gBuffer = NULL;
+static 	GBufferPixel* h_gBuffer = NULL; 
 
 // TODO: static variables for device memory, any extra info you need, etc
 //for caching first bounce
@@ -161,6 +168,8 @@ void pathtraceInit(Scene* scene) {
 #endif
 	cudaMalloc(&dev_tinyobj, scene->Obj_geoms.size() * sizeof(Geom));
 	cudaMemcpy(dev_tinyobj, scene->Obj_geoms.data(), scene->Obj_geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
+	h_gBuffer = new GBufferPixel[pixelcount];
+
 
 	checkCUDAError("pathtraceInit");
 }
@@ -178,6 +187,7 @@ void pathtraceFree() {
 	cudaFree(dev_first_paths);
 #endif
 	cudaFree(dev_tinyobj);
+	delete h_gBuffer;
 	checkCUDAError("pathtraceFree");
 }
 
@@ -201,6 +211,28 @@ glm::vec2 ConcentricSampleDisk(const glm::vec2 &u)
 	}
 	return r * glm::vec2(std::cos(theta), std::sin(theta));
 }
+
+int saveGBuffer()
+{
+	const Camera& cam = hst_scene->state.camera;
+	const int pixelcount = cam.resolution.x * cam.resolution.y;
+
+	//std::vector<GBufferPixel> h_gBuffer;
+	cudaMemcpy(h_gBuffer, dev_gBuffer, pixelcount * sizeof(GBufferPixel), cudaMemcpyDeviceToHost);
+
+	{
+		std::ofstream ofs(hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
+		boost::archive::text_oarchive oa(ofs);
+		for (int i = 0; i < pixelcount; i++)
+		{
+			oa << h_gBuffer[i];
+		}
+	}
+	
+
+	return 0;
+}
+
 
 /**
 * Generate PathSegments with rays from the camera through the screen into the
@@ -704,7 +736,7 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 #endif
 		if (depth == 0 && iter == 1) {
 			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
-			//saveGBuffer(dev_gBuffer);
+			saveGBuffer();
 		}
 		depth++;
 

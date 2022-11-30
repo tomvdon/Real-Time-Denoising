@@ -5,6 +5,9 @@
 #include <cuda_runtime.h>
 #include "glm/glm.hpp"
 #include <array>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+
 
 #define BACKGROUND_COLOR (glm::vec3(0.0f))
 
@@ -134,6 +137,7 @@ struct RenderState {
     int traceDepth;
     std::vector<glm::vec3> image;
     std::string imageName;
+    int sceneAngle;
 };
 
 struct PathSegment {
@@ -177,8 +181,30 @@ struct Obj {
     Geom* data;
 };
 
-struct GBufferPixel {
+class GBufferPixel {
+public:
     float t;
     glm::vec3 normal;
     glm::vec3 position;
+private:
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive& ar, const unsigned int version)
+    {
+        //ar& boost::serialization::make_nvp("t", t);
+        //ar& boost::serialization::make_nvp("n_x", normal.x);
+        //ar& boost::serialization::make_nvp("n_y", normal.y);
+        //ar& boost::serialization::make_nvp("n_z", normal.z);
+        //ar& boost::serialization::make_nvp("p_x", position.x);
+        //ar& boost::serialization::make_nvp("p_y", position.y);
+        //ar& boost::serialization::make_nvp("p_z", position.z);
+        ar& t;
+        ar& normal.x;
+        ar& normal.y;
+        ar& normal.z;
+        ar& position.x;
+        ar& position.y;
+        ar& position.z;
+
+    }
 };

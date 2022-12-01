@@ -20,10 +20,11 @@ struct Ray {
     glm::vec3 direction;
 };
 
-struct AABB {
+struct Bounds3 {
     glm::vec3 pMin, pMax;
+    glm::vec3 centroid;
 
-    AABB()
+    Bounds3()
     {
         float minNum = FLT_MIN;
         float maxNum = FLT_MAX;
@@ -31,23 +32,30 @@ struct AABB {
         pMax = glm::vec3(maxNum);
     }
 
-    AABB(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3) {
+    Bounds3(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3) {
         pMin = glm::vec3(fmin(p1.x, p2.x), fmin(p1.y, p2.y), fmin(p1.z, p2.z));
         pMax = glm::vec3(fmax(p1.x, p2.x), fmax(p1.y, p2.y), fmax(p1.z, p2.z));
 
         pMin = glm::vec3(fmin(pMin.x, p3.x), fmin(pMin.y, p3.y), fmin(pMin.z, p3.z));
         pMax = glm::vec3(fmax(pMax.x, p3.x), fmax(pMax.y, p3.y), fmax(pMax.z, p3.z));
 
+        centroid = (p1 + p2 + p3) / 3.f;
     }
+
+    glm::vec3 Diagonal() const { return pMax - pMin; }
+
+    int maxExtent() const
+    {
+        auto d = Diagonal();
+        if (d.x > d.y && d.x > d.z) { return  0; }
+        else if (d.y > d.x) { return 1; }
+        else { return 2; }
+    }
+
+    glm::vec3 Centroid() { return 0.5f * pMin + 0.5f * pMax; }
 
     bool IntersectP(const Ray& ray) const
     {
-
-        //auto temp1 = glm::vec3(pMax.x - ray.origin.x, pMax.y - ray.origin.y, pMax.z - ray.origin.z);
-        //auto temp2 = glm::vec3(pMin.x - ray.origin.x, pMin.y - ray.origin.y, pMin.z - ray.origin.z);
-        /*glm::vec3 ttop = glm::vec3((float)temp1.x * (float)invDir.x, (float)temp1.y * (float)invDir.y, (float)temp1.z * (float)invDir.z);
-        glm::vec3 tbot = glm::vec3((float)temp2.x * (float)invDir.x, (float)temp2.y * (float)invDir.y, (float)temp2.z * (float)invDir.z);*/
-
         glm::vec3 invDir = glm::vec3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z);
 
         auto temp1 = pMax - ray.origin;
@@ -62,8 +70,15 @@ struct AABB {
         float t1 = std::min(tmax.x, (std::min)(tmax.y, tmax.z));
         return t0 <= t1 && t1 >= 0;
     }
-};
 
+    bool Inside(const glm::vec3& p, const Bounds3& b)
+    {
+        return (p.x >= b.pMin.x && p.x <= b.pMax.x
+            && p.y >= b.pMin.y && p.y <= b.pMax.y
+            && p.z >= b.pMin.z && p.z <= b.pMax.z);
+    }
+};
+ 
 
 struct Geom {
     enum GeomType type;
@@ -86,7 +101,7 @@ struct Geom {
     int texture_height;
     int channels;
 
-    AABB bbox;
+    Bounds3 bbox;
     int obj_start_offset;
     int obj_end;
 
@@ -152,26 +167,66 @@ struct ShadeableIntersection {
   glm::vec2 uv;
 };
 
+
 struct Triangle {
     glm::vec3 pos[3];
     glm::vec3 normal[3];
     glm::vec2 uv[3];
     int materialId;
+
+    Triangle() {}
 };
 
-
-static AABB Union(const AABB& b1, const AABB& b2) {
-    AABB ret;
-    ret.pMin = glm::vec3((std::min)(b1.pMin.x, b2.pMin.x),
+static Bounds3 Union(const Bounds3& b1, const Bounds3& b2) {
+    Bounds3 ret;
+    ret.pMin = glm::vec3(
+        (std::min)(b1.pMin.x, b2.pMin.x),
         (std::min)(b1.pMin.y, b2.pMin.y),
         (std::min)(b1.pMin.z, b2.pMin.z));
-    ret.pMax = glm::vec3((std::max)(b1.pMax.x, b2.pMax.x),
+    ret.pMax = glm::vec3(
+        (std::max)(b1.pMax.x, b2.pMax.x),
         (std::max)(b1.pMax.y, b2.pMax.y),
         (std::max)(b1.pMax.z, b2.pMax.z));
     return ret;
 }
 
+inline Bounds3 Union(const Bounds3& b1, const glm::vec3& p) {
+    Bounds3 ret;
+    ret.pMin = glm::vec3((std::min)(b1.pMin.x, p.x),
+        (std::min)(b1.pMin.y, p.y),
+        (std::min)(b1.pMin.z, p.z));
+    ret.pMax = glm::vec3((std::max)(b1.pMax.x, p.x),
+        (std::max)(b1.pMax.y, p.y),
+        (std::max)(b1.pMax.z, p.z));
+    return ret;
+}
+
 struct Obj {
-    AABB box;
+    Bounds3 box;
     Geom* data;
+};
+
+struct BVHBuildNode {
+    Bounds3 bounds;
+    BVHBuildNode* left;
+    BVHBuildNode* right;
+    Triangle* m_tri;
+    int tri_index;
+    int split_axis;
+
+    int firstPrimOffset = 0, nPrimitives = 0;
+
+    BVHBuildNode() {
+        bounds = Bounds3();
+        left = nullptr; right = nullptr;
+        tri_index = -1;
+        m_tri = nullptr;
+    }
+};
+
+struct BVHGPUNode {
+    Bounds3 bounds;
+    Triangle* m_tri;
+    int split_axis;
+    int offset_to_second_child;
 };

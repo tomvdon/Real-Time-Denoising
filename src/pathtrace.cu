@@ -18,11 +18,11 @@
 #include <thrust/partition.h>
 
 #define DIRECT 0
-#define CACHE_FIRST_BOUNCE 1
+#define CACHE_FIRST_BOUNCE 0
 #define SORT_MATERIAL 0
-#define COMPACTION 1
+#define COMPACTION 0
 #define DEPTH_OF_FIELD 0
-#define ANTI_ALIASING 1
+#define ANTI_ALIASING 0
 #define BOUNDING_BOX 0
 
 
@@ -89,6 +89,8 @@ static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 
+static BVHGPUNode* dev_bvh_nodes = NULL;
+
 // TODO: static variables for device memory, any extra info you need, etc
 //for caching first bounce
 #if CACHE_FIRST_BOUNCE
@@ -133,6 +135,13 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_tinyobj, scene->Obj_geoms.size() * sizeof(Geom));
 	cudaMemcpy(dev_tinyobj, scene->Obj_geoms.data(), scene->Obj_geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
+
+	//bvh
+	cudaMalloc(&dev_bvh_nodes, scene->gpu_array.size() * sizeof(BVHGPUNode));
+	cudaMemcpy(dev_bvh_nodes, scene->gpu_array.data(), scene->gpu_array.size() * sizeof(BVHGPUNode), cudaMemcpyHostToDevice);
+
+
+
 	checkCUDAError("pathtraceInit");
 }
 
@@ -148,6 +157,7 @@ void pathtraceFree() {
 	cudaFree(dev_first_paths);
 #endif
 	cudaFree(dev_tinyobj);
+	cudaFree(dev_bvh_nodes);
 	checkCUDAError("pathtraceFree");
 }
 

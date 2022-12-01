@@ -215,16 +215,6 @@ float meshIntersectionTest(Geom mesh, Ray r, Geom* triangle, int tri_size, bool 
         glm::vec3 t_normal;
         glm::vec2 t_uv;
         bool t_outside;
-        //for (int i = 0; i < tri_size; i++) {
-        //    temp_t = triangleIntersectionTest(triangle[i], r, t_intersetion, t_normal, t_uv, t_outside);
-        //    //if (temp_t < t_min)
-        //    //    t_min = temp_t;
-        //    if (temp_t != -1) {
-        //        t_min = temp_t;
-        //        break;
-        //    }
-        //}
-
 
         for (int i = start; i < end; i++) {
             temp_t = triangleIntersectionTest(triangle[i], r, t_intersetion, t_normal, t_uv, t_outside);
@@ -268,4 +258,88 @@ float meshIntersectionTest(Geom mesh, Ray r, Geom* triangle, int tri_size, bool 
         }
     }
     return -1;
+}
+
+__host__ __device__
+float bvhInteresection(Geom mesh, Ray r, Geom* triangle, int tri_size,
+    glm::vec3& intersectionPoint, glm::vec3& normal, glm::vec2& uv, bool& outside)
+{
+    int stack_pointer = 0;
+    int cur_node_index = 0;
+    int node_stack[32];
+    BVHNode_GPU cur_node;
+    glm::vec3 P;
+    glm::vec3 s;
+    float t1;
+    float t2;
+    float tmin;
+    float tmax;
+    while (true) {
+        cur_node = bvh_nodes[cur_node_index];
+
+        // (ray-aabb test node)
+        t1 = (cur_node.AABB_min.x - r.origin.x) * r.direction_inv.x;
+        t2 = (cur_node.AABB_max.x - r.origin.x) * r.direction_inv.x;
+
+        tmin = glm::min(t1, t2);
+        tmax = glm::max(t1, t2);
+
+        t1 = (cur_node.AABB_min.y - r.origin.y) * r.direction_inv.y;
+        t2 = (cur_node.AABB_max.y - r.origin.y) * r.direction_inv.y;
+
+        tmin = glm::max(tmin, glm::min(t1, t2));
+        tmax = glm::min(tmax, glm::max(t1, t2));
+
+        t1 = (cur_node.AABB_min.z - r.origin.z) * r.direction_inv.z;
+        t2 = (cur_node.AABB_max.z - r.origin.z) * r.direction_inv.z;
+
+        tmin = glm::max(tmin, glm::min(t1, t2));
+        tmax = glm::min(tmax, glm::max(t1, t2));
+
+        if (tmax >= tmin) {
+            // we intersected AABB
+            if (cur_node.tri_index != -1) {
+                // this is leaf node
+                // triangle intersection test
+                Tri tri = tris[cur_node.tri_index];
+
+                t = glm::dot(tri.plane_normal, (tri.p0 - r.origin)) / glm::dot(tri.plane_normal, r.direction);
+                if (t >= -0.0001f) {
+                    P = r.origin + t * r.direction;
+
+                    // barycentric coords
+                    s = glm::vec3(glm::length(glm::cross(P - tri.p1, P - tri.p2)),
+                        glm::length(glm::cross(P - tri.p2, P - tri.p0)),
+                        glm::length(glm::cross(P - tri.p0, P - tri.p1))) / tri.S;
+
+                    if (s.x >= -0.0001f && s.x <= 1.0001f && s.y >= -0.0001f && s.y <= 1.0001f &&
+                        s.z >= -0.0001f && s.z <= 1.0001f && (s.x + s.y + s.z <= 1.0001f) && (s.x + s.y + s.z >= -0.0001f) && isect.t > t) {
+                        isect.t = t;
+                        isect.materialId = tri.mat_ID;
+                        isect.surfaceNormal = glm::normalize(s.x * tri.n0 + s.y * tri.n1 + s.z * tri.n2);
+                    }
+                }
+                // if last node in tree, we are done
+                if (stack_pointer == 0) {
+                    break;
+                }
+                // otherwise need to check rest of the things in the stack
+                stack_pointer--;
+                cur_node_index = node_stack[stack_pointer];
+            }
+            else {
+                node_stack[stack_pointer] = cur_node.offset_to_second_child;
+                stack_pointer++;
+                cur_node_index++;
+            }
+        }
+        else {
+            // didn't intersect AABB, remove from stack
+            if (stack_pointer == 0) {
+                break;
+            }
+            stack_pointer--;
+            cur_node_index = node_stack[stack_pointer];
+        }
+    }
 }

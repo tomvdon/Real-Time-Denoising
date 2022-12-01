@@ -51,19 +51,49 @@ if __name__ == '__main__':
             param = torch.flatten(param, start_dim=1, end_dim=2)
         #np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
 
-    #img_path = '../img/tensorflow.png'
     img_path = 'test.png'
-    #img_path = 'test2.png'
     img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
     img = (img / 255.)#[:3]# 0-255 -> 0-1
     plt.imshow(img.permute(1,2,0))
     plt.show()
-    # kernel = params['model.0.weight']
-    # bias = params['model.0.bias']
-    # arr = np.genfromtxt('out3.txt', delimiter=',')
 
-    # conv = F.conv2d(img.unsqueeze(dim=0), kernel, padding=(1,1), bias=bias)
-    # conv2 = F.conv2d(img.unsqueeze(dim=0), kernel, padding=(1,1))
+    # img_r = np.genfromtxt('img_log/orig_img_chan0.txt', delimiter=',').reshape(481, 321)
+    # img_g = np.genfromtxt('img_log/orig_img_chan1.txt', delimiter=',').reshape(481, 321)
+    # img_b = np.genfromtxt('img_log/orig_img_chan2.txt', delimiter=',').reshape(481, 321)
+
+    # kernel_0 = params['model.0.weight']
+    # bias_0 = params['model.0.bias']
+    # kernel_1 = params['model.2.weight']
+    # bias_1 = params['model.2.bias']
+    # arr = np.genfromtxt('out3.txt', delimiter=',')
+    
+    # a_conv0 = np.genfromtxt('img_log/conv2_chan0.txt', delimiter=',').reshape(481, 321)
+    # a_convbias0 = np.genfromtxt('img_log/conv2bias_chan0.txt', delimiter=',').reshape(481, 321)
+    # a_convrelu0 = np.genfromtxt('img_log/conv2relu_chan0.txt', delimiter=',').reshape(481, 321)
+    # a_conv64 = np.genfromtxt('img_log/conv2_chan63.txt', delimiter=',').reshape(481, 321)
+    # a_convbias64 = np.genfromtxt('img_log/conv2bias_chan63.txt', delimiter=',').reshape(481, 321)
+    # a_convrelu64 = np.genfromtxt('img_log/conv2relu_chan63.txt', delimiter=',').reshape(481, 321)
+
+    # convbias = F.conv2d(img.unsqueeze(dim=0), kernel_0, padding=(1,1), bias=bias_0).squeeze()
+    # conv = F.conv2d(img.unsqueeze(dim=0), kernel_0, padding=(1,1)).squeeze()
+    # convfull = F.relu(F.conv2d(img.unsqueeze(dim=0), kernel_0, padding=(1,1), bias=bias_0).squeeze())
+
+    # convbias_1 = F.conv2d(convfull.unsqueeze(dim=0), kernel_1, padding=(1,1), bias=bias_1).squeeze()
+    # conv_1 = F.conv2d(convfull.unsqueeze(dim=0), kernel_1, padding=(1,1)).squeeze()
+    # convfull_1 = F.relu(F.conv2d(convfull.unsqueeze(dim=0), kernel_1, padding=(1,1), bias=bias_1).squeeze())
+    # in_tensor = img.unsqueeze(dim=0)
+
+    # for i in range(20):
+    #     kernel = params[f"model.{i*2}.weight"]
+    #     bias = params[f"model.{i*2}.bias"]
+    #     convbias = F.conv2d(in_tensor, kernel, padding=(1,1), bias=bias)
+    #     conv = F.conv2d(in_tensor, kernel, padding=(1,1))
+    #     convfull = F.relu(F.conv2d(in_tensor, kernel, padding=(1,1), bias=bias))
+    #     if i == 10:
+    #         import pdb
+    #         pdb.set_trace()
+    #     in_tensor = convfull if i != 19 else convbias
+
     #arr = arr.reshape(578, 549)
     # diff = torch.abs(conv[0,0] - torch.from_numpy(arr))
     # plt.imshow(conv[0,0])
@@ -92,4 +122,14 @@ if __name__ == '__main__':
 
     plt.imshow(out_img.squeeze().permute(1,2,0).cpu())
     plt.show()
+
+    plt.imshow((img - out_img.detach().cpu()).squeeze().permute(1,2,0).cpu())
+    plt.show()
+
+    out_img_r = np.genfromtxt('img_log/out_img_chan0.txt', delimiter=',').reshape(481, 321)
+    out_img_g = np.genfromtxt('img_log/out_img_chan1.txt', delimiter=',').reshape(481, 321)
+    out_img_b = np.genfromtxt('img_log/out_img_chan2.txt', delimiter=',').reshape(481, 321)
+
+    import pdb
+    pdb.set_trace()
 

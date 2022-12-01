@@ -68,7 +68,10 @@ void opencv_saveimage(const char* output_filename,
 	int height,
 	int width) {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
-	cv::Mat output_image(height, width, CV_32FC3, buffer);
+	float* temp = (float*)malloc(sizeof(float) * 3 * height * width);
+	memcpy(temp, buffer, sizeof(float) * 3 * height * width);
+
+	cv::Mat output_image(height, width, CV_32FC3, temp);
 	cv::cvtColor(output_image, output_image, cv::COLOR_RGB2BGR, 3 );
 	//// Make negative values zero.
 	cv::threshold(output_image,
@@ -84,18 +87,9 @@ void opencv_saveimage(const char* output_filename,
 	cv::normalize(output_image, output_image, 0.0, 255.0, cv::NORM_MINMAX);
 	output_image.convertTo(output_image, CV_8UC3);
 	cv::imwrite(output_filename, output_image);
-}
 
-//struct filter {
-//	int in_channels;
-//	int out_channels;
-//	int height;
-//	int width;
-//	int num_els;
-//
-//	filter(int in_c, int out_c, int h, int w) :
-//		in_channels(in_c), out_channels(out_c), height(h), width(w), num_els(in_c * out_c * h * w) {}
-//};
+	free(temp);
+}
 
 struct tensor {
 	int n;
@@ -176,7 +170,7 @@ void readBias(tensor& input, tensor& output, std::string bias_path) {
 	// This function reads in a csv file where each row contains a single value that is the bias term for that channel
 	// Expects the csv file to have number of lines == input.c
 	// Creates tensor that is size input.n, input.c, input.h, input.w by repeating the bias term for each channel to form a h,w arr
-	// Outputs to output tensor
+	// Uses input tensor to know how many lines to read, Outputs to output tensor
 
 	std::ifstream fp_in;
 	fp_in.open(bias_path);
@@ -401,6 +395,30 @@ void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_forma
 	t.host = h_reshaped;
 }
 
+void logTensor(tensor& t, std::string out_path, std::string name) {
+	// Logs tensors that are NCHW to txt files, one per channel
+	std::cout << t.h << ", " << t.w << std::endl;
+	for (int i = 0; i < t.c; ++i) {
+		std::ofstream fp_out;
+		std::ostringstream path_stream;
+		path_stream << out_path + name + "_chan" << i << ".txt";
+		std::string f_path = path_stream.str();
+		fp_out.open(f_path);
+		if (!fp_out.is_open()) {
+			std::cout << "Error writing to file - aborting!" << std::endl;
+			throw;
+		}
+
+		for (int j = 0; j < t.h * t.w; ++j) {
+			fp_out << t.host[i * t.w * t.h + j];
+			if (j != t.w * t.h - 1) {
+				fp_out << ", ";
+			}
+		}
+		fp_out.close();
+	}
+}
+
 void tryCUDNN() {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	std::cout << "Running" << std::endl;
@@ -517,14 +535,16 @@ void tryCUDNN() {
 void dnCNN() {
 	cudnnHandle_t handle;
 	cudnnCreate(&handle);
+	std::cout << sizeof(float) << std::endl;
+	std::string img_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\";
 
 	//Load input
-	cv::Mat image = load_image("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\test.png");
+	cv::Mat image = load_image((img_path + "test.png").c_str());
 	std::cout << "Image has shape " << image.rows << ", " << image.cols << std::endl;
 	int image_bytes = 1 * 3 * image.rows * image.cols * sizeof(float);
 	// Make 0-255 -> 0-1
 	float* img = image.ptr<float>(0);
-	for (int i = 0; i <= 3 * image.rows * image.cols; ++i) {
+	for (int i = 0; i < 3 * image.rows * image.cols; ++i) {
 		img[i] /= 255.f;
 	}
 	
@@ -545,60 +565,22 @@ void dnCNN() {
 
 	reshapeTensor(handle, input, CUDNN_TENSOR_NHWC, CUDNN_TENSOR_NCHW);
 
-	//Reshape output to NCHW instead of NHWC
-	//float* d_reshaped_in;
-	//cudaMalloc(&d_reshaped_in, image_bytes);
-	//cudaMemset(d_reshaped_in, 0, image_bytes);
-	//cudnnTensorDescriptor_t reshaped_desc;
-	//checkCUDNN(cudnnCreateTensorDescriptor(&reshaped_desc));
-	//checkCUDNN(cudnnSetTensor4dDescriptor(reshaped_desc,
-	//	/*format=*/CUDNN_TENSOR_NCHW,
-	//	/*dataType=*/CUDNN_DATA_FLOAT,
-	//	/*batch_size=*/1,
-	//	/*channels=*/3,
-	//	/*image_height=*/image.rows,
-	//	/*image_width=*/image.cols));
-	//cudnnTensorDescriptor_t in_desc;
-	//checkCUDNN(cudnnCreateTensorDescriptor(&in_desc));
-	//checkCUDNN(cudnnSetTensor4dDescriptor(in_desc,
-	//	/*format=*/CUDNN_TENSOR_NHWC,
-	//	/*dataType=*/CUDNN_DATA_FLOAT,
-	//	/*batch_size=*/1,
-	//	/*channels=*/3,
-	//	/*image_height=*/image.rows,
-	//	/*image_width=*/image.cols));
-	//const float alpha = 1, beta = 0;
-	//checkCUDNN(cudnnTransformTensor(handle,
-	//	&alpha,
-	//	in_desc,
-	//	d_input,
-	//	&beta,
-	//	reshaped_desc,
-	//	d_reshaped_in));
-	//float* h_reshaped_in = (float*)malloc(image_bytes);
-	//cudaMemcpy(h_reshaped_in, d_reshaped_in, image_bytes, cudaMemcpyDeviceToHost);
+	logTensor(input, img_path + "img_log\\", "orig_img");
 
-	//tensor input = tensor(1, 3, image.rows, image.cols);
-	//input.dev = d_reshaped_in;
-	//input.host = h_reshaped_in;
-
-	for (int i = 0; i < 19; ++i) {
-		std::cout << "Layer " << i+1 << std::endl;
-
+	for (int i = 0; i < 20; ++i) {
 		// Load filter
-		// TODO Figure out filter sizes and somehow read that or hard code it
-		// kernel should not always be this shape
+		// TODO Figure out way to describe the filter sizes across a network, for now its hardcoded since dncnn is simple
 		int in_chan = 64;
 		int out_chan = 64;
 		if (i == 0) {
 			in_chan = 3;
 		}
-		if (i == 18) {
+		if (i == 19) {
 			out_chan = 3;
 		}
 		tensor kernel = tensor(out_chan, in_chan, 3, 3);
 		std::ostringstream path_stream;
-		path_stream << "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_weight.csv";
+		path_stream << img_path + "weights\\" << i * 2 << "_weight.csv";
 		std::string f_path = path_stream.str();
 		read_filter(kernel, f_path);
 		std::cout << "Read filter" << std::endl;
@@ -608,14 +590,15 @@ void dnCNN() {
 		convolutionalForward(handle, input, kernel, output);
 		std::cout << "Conv forward" << std::endl;
 
-		// Add bias
+		// Add bias, done in place
 		std::ostringstream bias_stream;
-		bias_stream << "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_bias.csv";
+		bias_stream << img_path + "weights\\" << i * 2 << "_bias.csv";
 		std::string bias_path = bias_stream.str();
 		tensor bias = tensor();
 		readBias(output, bias, bias_path);
 		addBias(handle, output, bias);
 		std::cout << "Add Bias" << std::endl;
+
 
 		// ReLU
 		// TODO closer look at documentation, it says HW-packed is faster. Does this mean NHWC is faster than NCHW?
@@ -628,8 +611,8 @@ void dnCNN() {
 			CUDNN_PROPAGATE_NAN,
 			0.0));
 		cudnnTensorDescriptor_t output_descriptor;
-		createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NHWC, output.n, output.c, output.h, output.w);
-		if (i != 18) {
+		createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, output.n, output.c, output.h, output.w);
+		if (i != 19) {
 			std::cout << "ReLU" << std::endl;
 			checkCUDNN(cudnnActivationForward(handle,
 				activation,
@@ -662,61 +645,41 @@ void dnCNN() {
 	cudaMemcpy(input.host, input.dev, sizeof(float) * input.n * input.c * input.h * input.w, cudaMemcpyDeviceToHost);
 	std::cout << "Final output shape is " << input.n << ", " << input.c << ", " << input.h << ", " << input.w << std::endl;
 
-	// Save image as 3 txt channels, one for RGB
-	std::string red_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\red.txt";
-	std::string green_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\green.txt";
-	std::string blue_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\blue.txt";
-	
-	std::ofstream fp_out;
-	fp_out.open(red_path);
-	if (!fp_out.is_open()) {
-		std::cout << "Error writing to file - aborting!" << std::endl;
-		throw;
-	}
-	for (int i = 0; i < input.w * input.h; ++i) {
-		fp_out << input.host[i];
-		if (i != input.h * input.w - 1) {
-			fp_out << ", ";
-		}
-	}
-	fp_out.close();
+	//Make sure the folder exists
+	logTensor(input, img_path + "img_log\\", "out_img");
 
-	fp_out.open(green_path);
-	if (!fp_out.is_open()) {
-		std::cout << "Error writing to file - aborting!" << std::endl;
-		throw;
-	}
-	for (int i = 0; i < input.w * input.h; ++i) {
-		fp_out << input.host[i + input.w * input.h];
-		if (i != input.h * input.w - 1) {
-			fp_out << ", ";
-		}
-	}
-	fp_out.close();
-
-	fp_out.open(blue_path);
-	if (!fp_out.is_open()) {
-		std::cout << "Error writing to file - aborting!" << std::endl;
-		throw;
-	}
-	for (int i = 0; i < input.w * input.h; ++i) {
-		fp_out << input.host[i + input.w * input.h * 2];
-		if (i != input.h * input.w - 1) {
-			fp_out << ", ";
-		}
-	}
-	fp_out.close();
-
+	//Reshape tensor back to NHWC since img is in that format
 	reshapeTensor(handle, input, CUDNN_TENSOR_NCHW, CUDNN_TENSOR_NHWC);
-	opencv_saveimage("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\noise.png", input.host, input.h, input.w);
+	opencv_saveimage((img_path + "noise.png").c_str(), input.host, input.h, input.w);
 
 	for (int i = 0; i < 3 * image.rows * image.cols; ++i) {
+		if (i < 20) {
+			std::cout << img[i] << " - " << input.host[i] << std::endl;
+		}
 		img[i] -= input.host[i];
 	}
-	opencv_saveimage("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\denoised.png", img, input.h, input.w);
 
+	opencv_saveimage((img_path + "denoised.png").c_str(), img, input.h, input.w);
+
+	tensor temp = tensor(1, 3, image.rows, image.cols);
+	float* h_temp = (float*) malloc(image_bytes);
+	float* d_temp;
+	cudaMalloc(&d_temp, image_bytes);
+
+	memcpy(h_temp, img, image_bytes);
+	cudaMemcpy(d_temp, h_temp, image_bytes, cudaMemcpyHostToDevice);
+
+	temp.host = h_temp;
+	temp.dev = d_temp;
+
+	reshapeTensor(handle, temp, CUDNN_TENSOR_NHWC, CUDNN_TENSOR_NCHW);
+	logTensor(temp, img_path + "img_log\\", "final");
+	
+	free(temp.host);
+	cudaFree(temp.dev);
 	cudaFree(input.dev);
 	free(input.host);
+	cudnnDestroy(handle);
 }
 
 //-------------------------------

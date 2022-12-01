@@ -50,6 +50,7 @@ int height;
 cv::Mat load_image(const char* image_path) {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
+	cv::cvtColor(image, image, cv::COLOR_BGR2RGB, 3);
 
 	if (image.empty()) {
 		std::cout << "Could not read the image: " << image_path << std::endl;
@@ -68,7 +69,7 @@ void opencv_saveimage(const char* output_filename,
 	int width) {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	cv::Mat output_image(height, width, CV_32FC3, buffer);
-
+	cv::cvtColor(output_image, output_image, cv::COLOR_RGB2BGR, 3 );
 	//// Make negative values zero.
 	cv::threshold(output_image,
 		output_image,
@@ -76,6 +77,7 @@ void opencv_saveimage(const char* output_filename,
 		/*maxval=*/0,
 		cv::THRESH_TOZERO);
 	//cv::normalize(output_image, output_image, 0, 1, cv::NORM_MINMAX);
+
 	cv::imshow("Display window", output_image);
 	int k = cv::waitKey(0); // Wait for a keystroke in the 
 
@@ -406,7 +408,7 @@ void tryCUDNN() {
 	cudnnCreate(&handle);
 
 	//Load input
-	cv::Mat image = load_image("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\tensorflow.png");
+	cv::Mat image = load_image("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\tensorflow.png");
 	std::cout << "Image has shape " << image.rows << ", " << image.cols << std::endl;
 	int image_bytes = 1 * 3 * image.rows * image.cols * sizeof(float); 
 	// Make 0-255 -> 0-1
@@ -463,7 +465,7 @@ void tryCUDNN() {
 	// Load filter
 	std::cout << "Loading filter ..." << std::endl;
 	tensor kernel = tensor(64, 3, 3, 3);
-	std::string f_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\0_weight.csv";
+	std::string f_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\0_weight.csv";
 	read_filter(kernel, f_path);
 	std::cout << "Succesful load" << std::endl;
 
@@ -472,13 +474,13 @@ void tryCUDNN() {
 	convolutionalForward(handle, input, kernel, output);
 
 	// Add bias
-	std::string bias_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\0_bias.csv";
+	std::string bias_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\0_bias.csv";
 	tensor bias = tensor();
 	readBias(output, bias, bias_path);
 	addBias(handle, output, bias);
 
 	// write to txt file to double check stuff
-	std::string out_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\out3.txt";
+	std::string out_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\out3.txt";
 	std::ofstream fp_out;
 	fp_out.open(out_path);
 	
@@ -495,7 +497,8 @@ void tryCUDNN() {
 	}
 	fp_out.close();
 	// Save img
-	//opencv_saveimage("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\out.png", h_output, image.rows, image.cols);
+	reshapeTensor(handle, output, CUDNN_TENSOR_NCHW, CUDNN_TENSOR_NHWC);
+	opencv_saveimage("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\out.png", output.host, image.rows, image.cols);
 
 	// Free up stuff
 	cudaFree(d_input);
@@ -516,12 +519,12 @@ void dnCNN() {
 	cudnnCreate(&handle);
 
 	//Load input
-	cv::Mat image = load_image("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\test.png");
+	cv::Mat image = load_image("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\test.png");
 	std::cout << "Image has shape " << image.rows << ", " << image.cols << std::endl;
 	int image_bytes = 1 * 3 * image.rows * image.cols * sizeof(float);
 	// Make 0-255 -> 0-1
 	float* img = image.ptr<float>(0);
-	for (int i = 0; i < 3 * image.rows * image.cols; ++i) {
+	for (int i = 0; i <= 3 * image.rows * image.cols; ++i) {
 		img[i] /= 255.f;
 	}
 	
@@ -595,7 +598,7 @@ void dnCNN() {
 		}
 		tensor kernel = tensor(out_chan, in_chan, 3, 3);
 		std::ostringstream path_stream;
-		path_stream << "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_weight.csv";
+		path_stream << "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_weight.csv";
 		std::string f_path = path_stream.str();
 		read_filter(kernel, f_path);
 		std::cout << "Read filter" << std::endl;
@@ -607,7 +610,7 @@ void dnCNN() {
 
 		// Add bias
 		std::ostringstream bias_stream;
-		bias_stream << "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_bias.csv";
+		bias_stream << "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\" << i * 2 << "_bias.csv";
 		std::string bias_path = bias_stream.str();
 		tensor bias = tensor();
 		readBias(output, bias, bias_path);
@@ -660,9 +663,9 @@ void dnCNN() {
 	std::cout << "Final output shape is " << input.n << ", " << input.c << ", " << input.h << ", " << input.w << std::endl;
 
 	// Save image as 3 txt channels, one for RGB
-	std::string red_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\red.txt";
-	std::string green_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\green.txt";
-	std::string blue_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\blue.txt";
+	std::string red_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\red.txt";
+	std::string green_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\green.txt";
+	std::string blue_path = "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\blue.txt";
 	
 	std::ofstream fp_out;
 	fp_out.open(red_path);
@@ -705,12 +708,12 @@ void dnCNN() {
 	fp_out.close();
 
 	reshapeTensor(handle, input, CUDNN_TENSOR_NCHW, CUDNN_TENSOR_NHWC);
-	opencv_saveimage("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\noise.png", input.host, input.h, input.w);
+	opencv_saveimage("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\noise.png", input.host, input.h, input.w);
 
 	for (int i = 0; i < 3 * image.rows * image.cols; ++i) {
 		img[i] -= input.host[i];
 	}
-	opencv_saveimage("C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\img\\denoised.png", img, input.h, input.w);
+	opencv_saveimage("C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\img\\denoised.png", img, input.h, input.w);
 
 	cudaFree(input.dev);
 	free(input.host);

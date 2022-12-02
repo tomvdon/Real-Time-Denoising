@@ -301,8 +301,8 @@ int main(int argc, char** argv) {
 	max_angles_per_scene = atoi(argv[2]);
 	int loop_number = (int)atoi(argv[3]);
 	std::string filename = (argv[1]);
-
 	camera_angle = max_angles_per_scene * loop_number;
+	max_angles_per_scene = camera_angle + max_angles_per_scene;
 	std::string sceneFile = filename;
 
 	// Load scene file

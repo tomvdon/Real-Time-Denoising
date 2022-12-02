@@ -742,10 +742,10 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 #endif
-		if (depth == 0 && iter == 1) {
-			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
-			saveGBuffer();
-		}
+		//if (depth == 0 && iter == 1) {
+		//	generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
+		//	saveGBuffer();
+		//}
 		depth++;
 
 		// TODO:

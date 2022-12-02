@@ -16,6 +16,6 @@ Build in Relase mode
 
 ## To Run
 From the build directory run   
-~python ..\run_datagen.py --path ..\scenese\ --a NUM_CAMERA_ANGLE --loop (0 or 1)~
+`python ..\run_datagen.py --path ..\scenese\ --a NUM_CAMERA_ANGLE --loop (0 or 1)`
 
 Path is the path to the directory of scene files, --a is the number of camera angles to save per scene, -loop is whether to get saving training data

@@ -23,6 +23,9 @@ static bool middleMousePressed = false;
 static double lastX;
 static double lastY;
 static unsigned int camera_angle = 0;
+static unsigned int max_angles_per_scene = 0;
+static bool loop_scenes = false;
+
 
 static bool camchanged = true;
 static float dtheta = 0, dphi = 0;
@@ -68,6 +71,9 @@ cv::Mat load_image(const char* image_path) {
 
 	return image;
 }
+
+
+
 
 void save_image(const char* output_filename,
 	float* buffer,
@@ -292,8 +298,12 @@ int main(int argc, char** argv) {
 		printf("Usage: %s SCENEFILE.txt\n", argv[0]);
 		return 1;
 	}
+	max_angles_per_scene = atoi(argv[2]);
+	int loop_number = (int)atoi(argv[3]);
+	std::string filename = (argv[1]);
 
-	const char* sceneFile = argv[1];
+	camera_angle = max_angles_per_scene * loop_number;
+	std::string sceneFile = filename;
 
 	// Load scene file
 	scene = new Scene(sceneFile);
@@ -337,8 +347,7 @@ int main(int argc, char** argv) {
 	InitDataContainer(guiData);
 
 	// GLFW main loop
-	mainLoop();
-
+	mainLoop(max_angles_per_scene);
 	return 0;
 }
 
@@ -393,7 +402,7 @@ void saveTrainingImage() {
 	//img.saveHDR(filename);  // Save a Radiance HDR file
 }
 
-void runCuda() {
+int runCuda() {
 	if (camchanged) {
 		iteration = 0;
 		Camera& cam = renderState->camera;
@@ -423,7 +432,7 @@ void runCuda() {
 		pathtraceInit(scene);
 	}
 
-	if (iteration < renderState->iterations) {
+	if (iteration < renderState->iterations && iteration < 5) {
 
 		uchar4* pbo_dptr = NULL;
 		iteration++;
@@ -492,10 +501,11 @@ void runCuda() {
 		// -1 or 1
 		float movement_sign = std::rand() % 2 == 0 ? 1 : -1;
 		//width TODO: Based on image
-		float x_vel = std::rand() % (500 + 1);
+		
+		float x_vel = utilityCore::rand01() * ((float)cam.resolution.x - 200.0);
 		//height
-		float y_vel = std::rand() % (500 + 1);
-		float zoom = std::rand() % (11 );
+		float y_vel = utilityCore::rand01() * ((float)cam.resolution.y- 200.0);
+		float zoom = utilityCore::rand01() * 15.0;
 		std::cout << "X: " << x_vel << std::endl;
 		std::cout << "Y: " << y_vel << std::endl;
 		std::cout << "zoom: " << zoom << std::endl;
@@ -507,13 +517,13 @@ void runCuda() {
 
 		camchanged = true;
 		camera_angle++;
-		if (camera_angle < 2000)
+		if (camera_angle < max_angles_per_scene)
 		{
-			return;
+			return camera_angle;
+			
 		}
 #endif // GEN_DATA
 
-		saveImage();
 		pathtraceFree();
 		cudaDeviceReset();
 		exit(EXIT_SUCCESS);

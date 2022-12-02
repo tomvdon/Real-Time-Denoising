@@ -234,14 +234,17 @@ bool MouseOverImGuiWindow()
 	return mouseOverImGuiWinow;
 }
 
-void mainLoop() {
+void mainLoop( int max_angles_per_scene) {
 
 	while (!glfwWindowShouldClose(window)) {
 		
 		glfwPollEvents();
 
-		runCuda();
-
+		int camera_angle = runCuda();
+		if (camera_angle >= max_angles_per_scene)
+		{
+			break;
+		}
 		string title = "CIS565 Path Tracer | " + utilityCore::convertIntToString(iteration) + " Iterations";
 		glfwSetWindowTitle(window, title.c_str());
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);

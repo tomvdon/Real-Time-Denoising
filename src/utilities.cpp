@@ -110,3 +110,9 @@ std::istream& utilityCore::safeGetline(std::istream& is, std::string& t) {
         }
     }
 }
+
+float utilityCore::rand01()
+{
+    return static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+
+}

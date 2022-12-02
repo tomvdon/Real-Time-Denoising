@@ -176,17 +176,25 @@ void pathtraceInit(Scene* scene) {
 
 void pathtraceFree() {
 	cudaFree(dev_image);  // no-op if dev_image is null
+	checkCUDAError("pathtraceFree");
 	cudaFree(dev_paths);
+	checkCUDAError("pathtraceFree");
 	cudaFree(dev_geoms);
+	checkCUDAError("pathtraceFree");
 	cudaFree(dev_materials);
+	checkCUDAError("pathtraceFree");
 	cudaFree(dev_intersections);
+	checkCUDAError("pathtraceFree");
 	// TODO: clean up any extra device memory you created
 	cudaFree(dev_gBuffer);
 #if CACHE_FIRST_BOUNCE
 	cudaFree(dev_firstBounce);
+	checkCUDAError("pathtraceFree");
 	cudaFree(dev_first_paths);
+	checkCUDAError("pathtraceFree");
 #endif
 	cudaFree(dev_tinyobj);
+	checkCUDAError("pathtraceFree");
 	delete h_gBuffer;
 	checkCUDAError("pathtraceFree");
 }
@@ -221,7 +229,7 @@ int saveGBuffer()
 	cudaMemcpy(h_gBuffer, dev_gBuffer, pixelcount * sizeof(GBufferPixel), cudaMemcpyDeviceToHost);
 
 	{
-		std::ofstream ofs(hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
+		std::ofstream ofs("../training_data/" + hst_scene->state.imageName + "/" + std::to_string(hst_scene->state.sceneAngle) + "/" + hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
 		boost::archive::text_oarchive oa(ofs);
 		for (int i = 0; i < pixelcount; i++)
 		{

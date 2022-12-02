@@ -432,7 +432,7 @@ int runCuda() {
 		pathtraceInit(scene);
 	}
 
-	if (iteration < renderState->iterations && iteration < 5) {
+	if (iteration < renderState->iterations) {
 
 		uchar4* pbo_dptr = NULL;
 		iteration++;

@@ -238,7 +238,6 @@ private:
 
     }
 };
-};
 
 struct BVHBuildNode {
     Bounds3 bounds;

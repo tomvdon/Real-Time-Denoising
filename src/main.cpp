@@ -440,7 +440,9 @@ int runCuda() {
 
 		// execute the kernel
 		auto start = std::chrono::steady_clock::now();
-
+		std::filesystem::create_directory("../training_data");
+		std::filesystem::create_directory("../training_data/" + scene->state.imageName);
+		std::filesystem::create_directory("../training_data/" + scene->state.imageName + "/" + std::to_string(scene->state.sceneAngle));
 
 		int frame = 0;
 		pathtrace(pbo_dptr, frame, iteration);

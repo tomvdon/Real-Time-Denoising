@@ -227,8 +227,10 @@ int saveGBuffer()
 
 	//std::vector<GBufferPixel> h_gBuffer;
 	cudaMemcpy(h_gBuffer, dev_gBuffer, pixelcount * sizeof(GBufferPixel), cudaMemcpyDeviceToHost);
-
 	{
+
+		std::string filename = std::string("../training_data/" + hst_scene->state.imageName + "/" + std::to_string(hst_scene->state.sceneAngle) + "/" + hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
+		std::cout << filename << std::endl;
 		std::ofstream ofs("../training_data/" + hst_scene->state.imageName + "/" + std::to_string(hst_scene->state.sceneAngle) + "/" + hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
 		boost::archive::text_oarchive oa(ofs);
 		for (int i = 0; i < pixelcount; i++)
@@ -742,10 +744,11 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 #endif
-		//if (depth == 0 && iter == 1) {
-		//	generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
-		//	saveGBuffer();
-		//}
+		if (depth == 0 && iter == 1)
+		{
+			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
+			saveGBuffer();
+		}
 		depth++;
 
 		// TODO:

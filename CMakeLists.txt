@@ -93,6 +93,7 @@ set(headers
     src/preview.h
     src/utilities.h
     src/ImGui/imconfig.h
+    src/cudnn_helper.h
 	
 	src/ImGui/imgui.h
     src/ImGui/imconfig.h
@@ -112,8 +113,10 @@ set(sources
     src/glslUtility.cpp
     src/pathtrace.cu
     src/scene.cpp
+
     src/preview.cpp
     src/utilities.cpp
+    src/cudnn_helper.cpp
 	
     src/ImGui/imgui.cpp 
       src/ImGui/imgui_demo.cpp 

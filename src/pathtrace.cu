@@ -25,9 +25,9 @@
 #include <boost/serialization/serialization.hpp>
 
 #define DIRECT 0
-#define CACHE_FIRST_BOUNCE 0
+#define CACHE_FIRST_BOUNCE 1
 #define SORT_MATERIAL 0
-#define COMPACTION 0
+#define COMPACTION 1
 #define DEPTH_OF_FIELD 0
 #define ANTI_ALIASING 0
 #define BOUNDING_BOX 1
@@ -123,8 +123,6 @@ static ShadeableIntersection* dev_intersections = NULL;
 static GBufferPixel* dev_gBuffer = NULL;
 static 	GBufferPixel* h_gBuffer = NULL; 
 
-static BVHGPUNode* dev_bvh_nodes = NULL;
-
 // TODO: static variables for device memory, any extra info you need, etc
 //for caching first bounce
 #if CACHE_FIRST_BOUNCE
@@ -173,12 +171,6 @@ void pathtraceInit(Scene* scene) {
 	h_gBuffer = new GBufferPixel[pixelcount];
 
 
-	//bvh
-	cudaMalloc(&dev_bvh_nodes, scene->gpu_array.size() * sizeof(BVHGPUNode));
-	cudaMemcpy(dev_bvh_nodes, scene->gpu_array.data(), scene->gpu_array.size() * sizeof(BVHGPUNode), cudaMemcpyHostToDevice);
-
-
-
 	checkCUDAError("pathtraceInit");
 }
 
@@ -202,7 +194,6 @@ void pathtraceFree() {
 	checkCUDAError("pathtraceFree");
 #endif
 	cudaFree(dev_tinyobj);
-	cudaFree(dev_bvh_nodes);
 	checkCUDAError("pathtraceFree");
 	delete h_gBuffer;
 	checkCUDAError("pathtraceFree");

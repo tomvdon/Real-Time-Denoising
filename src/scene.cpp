@@ -8,7 +8,6 @@
 #include "tiny_obj_loader.h"
 #include <stb_image.h>
 #include <stb_image_write.h>
-#include <stack>
 
 
 Scene::Scene(string filename) {
@@ -47,20 +46,6 @@ Scene::Scene(string filename) {
                 loadTestScene();
             }
         }
-    }
-
-
-    if (mesh_tris_ptr.size() >= 1) {
-        root = recursiveBuild(mesh_tris_ptr);
-        toGPU();
-
-        //for (int i = 0; i < 200; ++i) {
-        //    std::cout << "NODE " << i << std::endl;
-        //    std::cout << "   AABB_min: " << gpu_array[i].bounds.pMin.x << " " << gpu_array[i].bounds.pMin.y << " " << gpu_array[i].bounds.pMin.z << " " << std::endl;
-        //    std::cout << "   AABB_max: " << gpu_array[i].bounds.pMax.x << " " << gpu_array[i].bounds.pMax.y << " " << gpu_array[i].bounds.pMax.z << " " << std::endl;
-        //    std::cout << "   offset_to_second_child: " << gpu_array[i].offset_to_second_child << std::endl;
-        //    std::cout << "   split_axis: " << gpu_array[i].split_axis << std::endl;
-        //}
     }
 }
 
@@ -499,10 +484,6 @@ int Scene::loadMesh(const char* fileName)
 
             triangle.type = TRIANGLE;
             triangle.materialid = materials.size();// + shapes[i].mesh.material_ids[f];
-
-
-            Triangle* newTri = new Triangle();
-
             // For each vertex in the face
             for (size_t v = 0; v < fnum; v++) {
                 tinyobj::index_t idx = shapes[i].mesh.indices[index_offset + v];
@@ -511,7 +492,6 @@ int Scene::loadMesh(const char* fileName)
                 auto y = attrib.vertices[3 * ver + 1];
                 auto z = attrib.vertices[3 * ver + 2];
                 triangle.pos[v] = glm::vec3(x, y, z);
-                newTri->pos[v] = glm::vec3(x, y, z);
 
 
                 if (idx.normal_index >= 0) {// -1 means no data
@@ -520,7 +500,6 @@ int Scene::loadMesh(const char* fileName)
                     auto ny = attrib.normals[3 * nor + 1];
                     auto nz = attrib.normals[3 * nor + 2];
                     triangle.normal[v] = glm::vec3(nx, ny, nz);
-                    newTri->normal[v] = glm::vec3(nx, ny, nz);
                 }
 
                 if (idx.texcoord_index >= 0) {
@@ -528,21 +507,56 @@ int Scene::loadMesh(const char* fileName)
                     auto tx = attrib.texcoords[2 * tex + 0];
                     auto ty = attrib.texcoords[2 * tex + 1];
                     triangle.uv[v] = glm::vec2(tx, ty);
-                    newTri->uv[v] = glm::vec2(tx, ty);
                 }
 
             }
             index_offset += fnum;
             //push all triangles into Obj_geoms
             Obj_geoms.push_back(triangle);
-            Bounds3 bound(triangle.pos[0], triangle.pos[1], triangle.pos[2]);
-            tri_bounds.push_back(bound);
-            //mesh_tris.push_back(newTri);
-            mesh_tris_ptr.push_back(newTri);
-            //geo.bbox = Union(geo.bbox, bound);
+            geo.bbox = Union(geo.bbox, AABB(triangle.pos[0], triangle.pos[1], triangle.pos[2]));
         }
     }
 
+    //load materials
+    //printf("material size: %d\n", m_materials.size());
+    //for (size_t i = 0; i < m_materials.size(); i++) {
+    //    Material temp;
+    //    //temp.name = m_materials[i].name.c_str();
+    //    printf("material[%ld].name = %s\n", static_cast<long>(i),
+    //        m_materials[i].name.c_str());
+    //    temp.color = glm::vec3(
+    //        static_cast<const double>(m_materials[i].diffuse[0]),
+    //        static_cast<const double>(m_materials[i].diffuse[1]),
+    //        static_cast<const double>(m_materials[i].diffuse[2]));
+    //    //temp.color = glm::vec3(1, 1, 1);
+    //    printf("  material.Kd = (%f, %f ,%f)\n",
+    //        static_cast<const double>(m_materials[i].diffuse[0]),
+    //        static_cast<const double>(m_materials[i].diffuse[1]),
+    //        static_cast<const double>(m_materials[i].diffuse[2]));
+    //    temp.specular.color = glm::vec3(
+    //        static_cast<const double>(m_materials[i].specular[0]),
+    //        static_cast<const double>(m_materials[i].specular[1]),
+    //        static_cast<const double>(m_materials[i].specular[2]));
+    //    temp.specular.exponent = 10; //hardcode exponent
+    //    printf("  material.Ks = (%f, %f ,%f)\n",
+    //        static_cast<const double>(m_materials[i].specular[0]),
+    //        static_cast<const double>(m_materials[i].specular[1]),
+    //        static_cast<const double>(m_materials[i].specular[2]));
+    //    temp.hasReflective = 1;
+    //    temp.hasRefractive = 1;
+    //    temp.emittance = 0;
+    //    temp.indexOfRefraction = 1.5;
+    //    temp.microfacet = 1;
+    //    temp.roughness = 0.5;
+    //    //just hardcode, only work for simgle image
+    //    temp.textureName = triangle.textureName;
+    //    temp.img = triangle.img;
+    //    temp.channels = triangle.channels;
+    //    temp.texture_width = triangle.texture_width;
+    //    temp.texture_height = triangle.texture_height;
+    //    materials.push_back(temp);
+    //    OBJ_materials.push_back(temp);
+    //}
 
     //push mesh to geoms
     geo.obj_end = Obj_geoms.size() - geo.obj_start_offset;
@@ -583,120 +597,4 @@ int Scene::loadTestScene() {
         geoms.push_back(newGeom);
     }
     return 1;
-}
-
-BVHBuildNode* Scene::recursiveBuild(std::vector<Triangle*> mesh_triangles)
-{
-    BVHBuildNode* node = new BVHBuildNode();
-
-    //compute AABB for all objects
-    Bounds3 bounds;
-    for (auto& obj : mesh_triangles) {
-        bounds = Union(bounds, Bounds3(obj->pos[0], obj->pos[1], obj->pos[2]));
-    }
-
-    //termination: only one object in BVHnode
-    if (mesh_triangles.size() == 1) {
-        node->left = nullptr;
-        node->right = nullptr;
-        node->bounds = Bounds3(mesh_triangles[0]->pos[0], mesh_triangles[0]->pos[1], mesh_triangles[0]->pos[2]);
-        node->m_tri = mesh_triangles[0];
-        return node;
-    }
-    else if (mesh_triangles.size() == 2) {
-        node->left = recursiveBuild(std::vector<Triangle*>{mesh_triangles[0]});
-        node->right = recursiveBuild(std::vector<Triangle*>{mesh_triangles[1]});
-        node->bounds = Union(node->left->bounds, node->right->bounds);
-        return node;
-    }
-    else {
-        Bounds3 centroidBounds;
-        for (auto& obj : mesh_triangles) {
-            centroidBounds = Union(centroidBounds, Bounds3(obj->pos[0], obj->pos[1], obj->pos[2]).Centroid());
-        }
-        //find longest axis, sort on that axis, and then split in the middle
-        int dim = centroidBounds.maxExtent();
-        switch (dim) {
-        case 0:
-            std::sort(mesh_triangles.begin(), mesh_triangles.end(), [](auto f1, auto f2) {
-                return Bounds3(f1->pos[0], f1->pos[1], f1->pos[2]).Centroid().x <
-                    Bounds3(f2->pos[0], f2->pos[1], f2->pos[2]).Centroid().x;
-                });
-            break;
-        case 1:
-            std::sort(mesh_triangles.begin(), mesh_triangles.end(), [](auto f1, auto f2) {
-                return Bounds3(f1->pos[0], f1->pos[1], f1->pos[2]).Centroid().y <
-                    Bounds3(f2->pos[0], f2->pos[1], f2->pos[2]).Centroid().y;
-                });
-            break;
-        case 2:
-            std::sort(mesh_triangles.begin(), mesh_triangles.end(), [](auto f1, auto f2) {
-                return Bounds3(f1->pos[0], f1->pos[1], f1->pos[2]).Centroid().z <
-                    Bounds3(f2->pos[0], f2->pos[1], f2->pos[2]).Centroid().z;
-                });
-            break;
-        }
-
-        auto beginning = mesh_triangles.begin();
-        auto ending = mesh_triangles.end();
-        auto middling = mesh_triangles.begin() + (mesh_triangles.size() / 2);
-
-        auto leftshapes = std::vector<Triangle*>(beginning, middling);
-        auto rightshapes = std::vector<Triangle*>(middling, ending);
-
-        assert(mesh_triangles.size() == (leftshapes.size() + rightshapes.size()));
-
-        node->left = recursiveBuild(leftshapes);
-        node->right = recursiveBuild(rightshapes);
-        node->split_axis = dim;
-
-        node->bounds = Union(node->left->bounds, node->right->bounds);
-    }
-    return node;
-}
-
-//dfs to convert binary tree to array
-void Scene::toGPU()
-{
-    std::stack<BVHBuildNode*> nodes_to_process;
-    std::stack<int> index_to_parent;
-    std::stack<bool> second_child_query;
-
-    int cur_node_index = 0;
-    int parent_index = 0;
-    bool is_second_child = false;
-    nodes_to_process.push(this->root);
-    index_to_parent.push(-1);
-    second_child_query.push(false);
-
-    while (!nodes_to_process.empty()) {
-        BVHGPUNode newGPUNode;
-        BVHBuildNode* cur_top = nodes_to_process.top();
-        nodes_to_process.pop();
-        parent_index = index_to_parent.top();
-        index_to_parent.pop();
-        is_second_child = second_child_query.top();
-        second_child_query.pop();
-
-        if (is_second_child && parent_index != -1) {
-            gpu_array[parent_index].offset_to_second_child = gpu_array.size();
-        }
-        newGPUNode.bounds = cur_top->bounds;
-        if (cur_top->m_tri != nullptr) {
-            // leaf node
-            newGPUNode.m_tri = cur_top->m_tri;
-        }
-        else {
-            // intermediate node
-            newGPUNode.split_axis = cur_top->split_axis;
-            newGPUNode.m_tri = nullptr;
-            nodes_to_process.push(cur_top->right);
-            index_to_parent.push(gpu_array.size());
-            second_child_query.push(true);
-            nodes_to_process.push(cur_top->left);
-            index_to_parent.push(-1);
-            second_child_query.push(false);
-        }
-        gpu_array.push_back(newGPUNode);
-    }
 }

@@ -24,8 +24,6 @@ private:
 public:
     Scene(string filename);
     ~Scene();
-    BVHBuildNode* recursiveBuild(std::vector<Triangle*> mesh_triangles);
-    void toGPU();
     int resetCamera();
 
     std::vector<Geom> geoms;
@@ -38,10 +36,5 @@ public:
     RenderState state;
 
     std::vector<Geom> Obj_geoms;
-    std::vector<Bounds3> tri_bounds;
-    std::vector<Triangle> mesh_tris;
-    std::vector<Triangle*> mesh_tris_ptr;
-    std::vector<BVHGPUNode> gpu_array;
-
-    BVHBuildNode* root;
+    
 };

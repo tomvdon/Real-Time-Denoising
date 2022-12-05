@@ -1,0 +1,140 @@
+MATERIAL 0
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   12
+
+MATERIAL 1
+RGB         .98 .98 .98
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 2
+RGB         .85 .35 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 3
+RGB         .35 .85 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 4
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 5
+RGB         0.202649 0.960686 0.440255
+SPECEX      0
+SPECRGB     0 0 0
+REFL        1
+REFR        0
+REFRIOR     0.000000
+EMITTANCE   0
+
+MATERIAL 6
+RGB         0.928278 0.520860 0.290473
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0.000000
+EMITTANCE   0
+
+MATERIAL 7
+RGB         0.185003 0.675747 0.941499
+SPECEX      0
+SPECRGB     0 0 0
+REFL        1
+REFR        1
+REFRIOR     0.209910
+EMITTANCE   0
+
+CAMERA
+RES         800 800
+FOVY        45
+ITERATIONS  5000
+DEPTH       8
+FILE        cornellNUM
+EYE         0.0 5 7.5
+LOOKAT      0 5 0
+UP          0 1 0
+FOCAL       5
+LENSE       2
+
+OBJECT 0
+cube
+material 0
+TRANS       0 10 0
+ROTAT       0 0 0
+SCALE       3 .3 3
+
+OBJECT 1
+cube
+material 1
+TRANS       0 0 0
+ROTAT       0 0 0
+SCALE       10 .01 10
+
+OBJECT 2
+cube
+material 1
+TRANS       0 10 0
+ROTAT       0 0 90
+SCALE       .01 10 10
+
+OBJECT 3
+cube
+material 1
+TRANS       0 5 -5
+ROTAT       0 90 0
+SCALE       .01 10 10
+
+OBJECT 4
+cube
+material 2
+TRANS       -5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 5
+cube
+material 3
+TRANS       5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 6
+sphere
+material 6
+TRANS       3.478181 3.554317 -0.208583
+ROTAT       86.034882 29.133564 7.925760
+SCALE       2.454011 2.454011 2.454011
+
+OBJECT 7
+sphere
+material 7
+TRANS       3.568707 3.027238 1.636211
+ROTAT       69.087173 0.020858 30.350208
+SCALE       1.466085 1.466085 1.466085
+

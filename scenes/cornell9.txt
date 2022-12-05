@@ -1,0 +1,156 @@
+MATERIAL 0
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   15
+
+MATERIAL 1
+RGB         .98 .98 .98
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 2
+RGB         .85 .35 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 3
+RGB         .35 .85 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 4
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 5
+RGB         0.237708 0.641288 0.440582
+SPECEX      0
+SPECRGB     0 0 0
+REFL        1
+REFR        0
+REFRIOR     0.000000
+EMITTANCE   0
+
+MATERIAL 6
+RGB         0.737671 0.015406 0.662891
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        1
+REFRIOR     0.143755
+EMITTANCE   0
+
+MATERIAL 7
+RGB         0.871734 0.258370 0.735539
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        1
+REFRIOR     0.004490
+EMITTANCE   0
+
+MATERIAL 8
+RGB         0.717422 0.186178 0.015829
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        1
+REFRIOR     0.236201
+EMITTANCE   0
+
+CAMERA
+RES         800 800
+FOVY        45
+ITERATIONS  5000
+DEPTH       8
+FILE        cornellNUM
+EYE         0.0 5 7.5
+LOOKAT      0 5 0
+UP          0 1 0
+FOCAL       5
+LENSE       2
+
+OBJECT 0
+cube
+material 0
+TRANS       0 10 0
+ROTAT       0 0 0
+SCALE       3 .3 3
+
+OBJECT 1
+cube
+material 1
+TRANS       0 0 0
+ROTAT       0 0 0
+SCALE       10 .01 10
+
+OBJECT 2
+cube
+material 1
+TRANS       0 10 0
+ROTAT       0 0 90
+SCALE       .01 10 10
+
+OBJECT 3
+cube
+material 1
+TRANS       0 5 -5
+ROTAT       0 90 0
+SCALE       .01 10 10
+
+OBJECT 4
+cube
+material 2
+TRANS       -5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 5
+cube
+material 3
+TRANS       5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 6
+cube
+material 6
+TRANS       -3.879969 -1.101495 2.455641
+ROTAT       31.450325 85.294212 81.137856
+SCALE       4.655048 4.655048 4.655048
+
+OBJECT 7
+sphere
+material 7
+TRANS       -1.725355 1.274177 3.244584
+ROTAT       74.938965 19.209534 35.468174
+SCALE       1.868108 1.868108 1.868108
+
+OBJECT 8
+sphere
+material 8
+TRANS       -2.456988 3.180673 0.606990
+ROTAT       10.501769 68.878929 7.643953
+SCALE       2.236102 2.236102 2.236102
+

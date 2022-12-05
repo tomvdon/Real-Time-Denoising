@@ -89,9 +89,6 @@ static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 
-static std::vector<tensor> filters;
-static std::vector<tensor> biases;
-
 // TODO: static variables for device memory, any extra info you need, etc
 //for caching first bounce
 #if CACHE_FIRST_BOUNCE
@@ -141,9 +138,6 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
 	cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
 
-	// Load dnCNN
-	loadDncnn(filters, biases, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
-
 	checkCUDAError("pathtraceInit");
 }
 
@@ -161,16 +155,6 @@ void pathtraceFree() {
 	cudaFree(dev_tinyobj);
 	cudaFree(dev_denoise);
 
-	// Free model
-	// TODO maybe we dont need host buffers?
-	for (tensor t : filters) {
-		cudaFree(t.dev);
-		free(t.host);
-	}
-	for (tensor t : biases) {
-		cudaFree(t.dev);
-		free(t.host);
-	}
 	checkCUDAError("pathtraceFree");
 }
 
@@ -605,18 +589,23 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 	}
 }
 
-void dnCNN() {
+void dnCNN(std::vector<tensor>& filters, std::vector<tensor>& biases) {
 	cudnnHandle_t handle;
 	cudnnCreate(&handle);
 	const Camera& cam = hst_scene->state.camera;
 
 	tensor input = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	// Use copy of image so that we can subtract noise from original image
-	float* dev_temp;
-	cudaMalloc(&dev_temp, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x);
-	cudaMemcpy(dev_temp, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
-	input.dev = dev_temp;
+	float* dev_input;
+	cudaMalloc(&dev_input, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+	cudaMemcpy(dev_input, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
+	input.dev = dev_input;
 	//input.host = h_input;
+
+	tensor output = tensor(1, 64, cam.resolution.y, cam.resolution.x);
+	float* dev_output;
+	cudaMalloc(&dev_output, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+	output.dev = dev_output;
 
 	//reshapeTensor(handle, input, CUDNN_TENSOR_NCHW, CUDNN_TENSOR_NHWC);
 	//float* temp = (float*)malloc(sizeof(float) * 3 * cam.resolution.y * cam.resolution.x);
@@ -633,7 +622,7 @@ void dnCNN() {
 	//int k = cv::waitKey(0); // Wait for a keystroke in the 
 	//free(temp);
 	
-	const float alpha = 1, beta = 0;
+	const float alpha = 1.f, beta = 0.f;
 	cudnnActivationDescriptor_t activation;
 	checkCUDNN(cudnnCreateActivationDescriptor(&activation));
 	checkCUDNN(cudnnSetActivationDescriptor(activation,
@@ -651,9 +640,8 @@ void dnCNN() {
 		if (i == 19) {
 			out_chan = 3;
 		}
-		// TODO maybe do this inplace?
+
 		// Conv forward
-		tensor output = tensor();
 		convolutionalForward(handle, input, filters[i], output);
 
 		// Add bias, done in place
@@ -662,9 +650,9 @@ void dnCNN() {
 		// ReLU
 		// TODO closer look at documentation, it says HW-packed is faster. Does this mean NHWC is faster than NCHW?
 		// Can be done in place
-		cudnnTensorDescriptor_t output_descriptor;
-		createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, output.n, output.c, output.h, output.w);
 		if (i != 19) {
+			cudnnTensorDescriptor_t output_descriptor;
+			createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, output.n, output.c, output.h, output.w);
 			checkCUDNN(cudnnActivationForward(handle,
 				activation,
 				&alpha,
@@ -672,27 +660,27 @@ void dnCNN() {
 				output.dev,
 				&beta,
 				output_descriptor,
-				output.dev));
+				input.dev));
+			cudnnDestroyTensorDescriptor(output_descriptor);
 		}
 		// Free input stuff, set input to output
-		cudaFree(input.dev);
+		//cudaFree(input.dev);
 		//free(input.host);
 		input.n = output.n;
 		input.c = output.c;
 		input.h = output.h;
 		input.w = output.w;
-		input.dev = output.dev;
+		//input.dev = output.dev;
 		//input.host = output.host;
-
-		cudnnDestroyTensorDescriptor(output_descriptor);
 	}
 
 	tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	image.dev = dev_denoise;
-	addBias(handle, image, input, true);
+	addBias(handle, image, output, true);
 
 	cudnnDestroyActivationDescriptor(activation);
 	cudaFree(input.dev);
+	cudaFree(output.dev);
 	//free(input.host);
 	cudnnDestroy(handle);
 }
@@ -701,7 +689,7 @@ void dnCNN() {
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4* pbo, int frame, int iter) {
+void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, std::vector<tensor>& biases) {
 	const int traceDepth = hst_scene->state.traceDepth;
 	const Camera& cam = hst_scene->state.camera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -763,7 +751,7 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
-	while (!iterationComplete && iter < 50) {
+	while (!iterationComplete && iter < 10) {
 
 		// clean shading chunks
 		cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -884,12 +872,12 @@ void pathtrace(uchar4* pbo, int frame, int iter) {
 		// Send results to OpenGL buffer for rendering
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
-	else if (iter == 50) {
+	else if (iter == 10) {
 		std::cout << "Denoising" << std::endl;
 		// Denoise
 		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
 		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
-		dnCNN();
+		dnCNN(filters, biases);
 		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_image);
 	}

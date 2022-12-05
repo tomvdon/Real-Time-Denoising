@@ -209,17 +209,17 @@ void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, t
 	cudnnTensorDescriptor_t output_descriptor;
 	createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, out_n, out_c, out_h, out_w);
 
-	// Allocate output
+	//// Allocate output
 	output.n = out_n;
 	output.c = out_c;
 	output.h = out_h;
 	output.w = out_w;
-	//std::cout << "Out size " << out_n << ", " << out_c << ", " << out_h << ", " << out_w << std::endl;
-	int output_bytes = out_n * out_c * out_h * out_w * sizeof(float);
-	float* d_out{ nullptr };
-	//float* h_out = (float*)malloc(output_bytes);
-	cudaMalloc(&d_out, output_bytes);
-	cudaMemset(d_out, 0, output_bytes);
+	////std::cout << "Out size " << out_n << ", " << out_c << ", " << out_h << ", " << out_w << std::endl;
+	//int output_bytes = out_n * out_c * out_h * out_w * sizeof(float);
+	//float* d_out{ nullptr };
+	////float* h_out = (float*)malloc(output_bytes);
+	//cudaMalloc(&d_out, output_bytes);
+	//cudaMemset(d_out, 0, output_bytes);
 
 	// Find fastest conv algorithim
 	cudnnConvolutionFwdAlgoPerf_t convolution_algorithm;
@@ -261,12 +261,12 @@ void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, t
 		workspace_bytes,
 		&beta,
 		output_descriptor,
-		d_out));
+		output.dev));
 	// Copy back to host
 	//cudaMemcpy(h_out, d_out, output_bytes, cudaMemcpyDeviceToHost);
 
 	//output.host = h_out;
-	output.dev = d_out;
+	//output.dev = d_out;
 
 	// Free up stuff
 	cudaFree(d_workspace);

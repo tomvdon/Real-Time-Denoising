@@ -38,6 +38,9 @@ int iteration;
 int width;
 int height;
 
+static std::vector<tensor> filters;
+static std::vector<tensor> biases;
+
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 //	std::cout << "Running" << std::endl;
@@ -356,12 +359,26 @@ int main(int argc, char** argv) {
 	// Initialize CUDA and GL components
 	init();
 
+	// Load dnCNN
+	loadDncnn(filters, biases, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
+
 	// Initialize ImGui Data
 	InitImguiData(guiData);
 	InitDataContainer(guiData);
 
 	// GLFW main loop
 	mainLoop();
+
+	// Free model
+	// TODO maybe we dont need host buffers?
+	for (tensor t : filters) {
+		cudaFree(t.dev);
+		free(t.host);
+	}
+	for (tensor t : biases) {
+		cudaFree(t.dev);
+		free(t.host);
+	}
 
 	return 0;
 }
@@ -428,7 +445,7 @@ void runCuda() {
 		auto start = std::chrono::steady_clock::now();
 
 		int frame = 0;
-		pathtrace(pbo_dptr, frame, iteration);
+		pathtrace(pbo_dptr, frame, iteration, filters, biases);
 
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> elapsed_seconds = end - start;

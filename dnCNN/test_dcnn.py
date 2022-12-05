@@ -28,21 +28,19 @@ if __name__ == '__main__':
     # restored = F.pixel_shuffle(out, 2)
 
     #model_path = 'original_dncnn.pth'
-    model_path = '25000_G.pth'
+    model_path = '200000_G.pth'
     # From Kai Zhang, dnnn_color_blind is nb=20
     # act_mode determines what the actiavation is, for example: BR == batch norm + ReLU
     # R == ReLU, we can ignore batch norm since utils_bnorm.merge_bn was ran, see https://github.com/cszn/KAIR/blob/master/utils/utils_bnorm.py 
     #model = DnCNN(in_nc=3, out_nc=3, nc=64, nb=20, act_mode='R')
-    model = DnCNN(in_nc=3, out_nc=3, nc=64, nb=20, act_mode='BR')
+    model = DnCNN(in_nc=3, out_nc=3, nc=64, nb=20, act_mode='R')
     #model = FFDNet(in_nc=3, out_nc=3, nc=96, nb=12, act_mode='R')
     model.load_state_dict(torch.load(model_path), strict=True)
     model.eval()
     for k, v in model.named_parameters():
         v.requires_grad = False
     params = {}
-    import pdb
-    pdb.set_trace()
-    
+
     if not os.path.exists('weights/'):
         os.mkdir('weights/')
     for name, param in model.named_parameters():
@@ -54,7 +52,8 @@ if __name__ == '__main__':
             param = torch.flatten(param, start_dim=0, end_dim=1) 
             param = torch.flatten(param, start_dim=1, end_dim=2)
         #np.savetxt('weights/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
-
+    import pdb
+    pdb.set_trace()
     img_path = 'test.png'
     img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
     img = (img / 255.)#[:3]# 0-255 -> 0-1

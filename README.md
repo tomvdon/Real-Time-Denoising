@@ -17,3 +17,6 @@ Use:
 
 ![](img/denoising_graph.png)  
 Current performance is unoptimized and poor, taking ~12 seconds to denoise an image. This will be improved in the coming days.
+
+![cd007bb848a6e9c4e12cf626d2add57](https://user-images.githubusercontent.com/54868517/205754761-267ce7a5-7e76-404d-8fbb-4dd6abfb63d9.png)
+performance analysis for Bounding Volumn Hierarchy

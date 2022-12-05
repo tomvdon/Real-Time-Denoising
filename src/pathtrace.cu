@@ -480,74 +480,54 @@ __global__ void computeIntersections(
 					cur_node_index = node_stack[stack_pointer];
 				}
 			}
+		}
 
+		for (int i = 0; i < geoms_size; ++i)
+		{
+			Geom& geom = geoms[i];
 
-			for (int i = 0; i < geoms_size; ++i)
+			if (geom.type == CUBE)
 			{
-				Geom& geom = geoms[i];
-
-				if (geom.type == CUBE)
-				{
-					t = boxIntersectionTest(geom, r, tmp_intersect, tmp_normal, outside);
-				}
-				else if (geom.type == SPHERE)
-				{
-					t = sphereIntersectionTest(geom, r, tmp_intersect, tmp_normal, outside);
-
-				}
-				// TODO: add more intersection tests here... triangle? metaball? CSG?
-				//else if (geom.type == TRIANGLE) {
-				//	t = triangleIntersectionTest(geom, r, tmp_intersect, tmp_normal, tmp_uv, outside);
-				//}
-
-				if (t > 0.0f && t_min > t)
-				{
-					t_min = t;
-					hit_geom_index = i;
-					intersect_point = tmp_intersect;
-					normal = tmp_normal;
-
-
-					uv = tmp_uv;
-				}
-
-				//if (depth == 0 && glm::dot(tmp_normal, r.direction) > 0.0) {
-				//	continue;
-				//}
-				//else if (t > 0.0f && isect.t > t) {
-				//	obj_ID = i;
-				//	isect.t = t;
-				//	isect.materialId = geom.materialid;
-				//	isect.surfaceNormal = tmp_normal;
-				//}
+				t = boxIntersectionTest(geom, r, tmp_intersect, tmp_normal, outside);
+			}
+			else if (geom.type == SPHERE)
+			{
+				t = sphereIntersectionTest(geom, r, tmp_intersect, tmp_normal, outside);
 
 			}
+			// TODO: add more intersection tests here... triangle? metaball? CSG?
+			//else if (geom.type == TRIANGLE) {
+			//	t = triangleIntersectionTest(geom, r, tmp_intersect, tmp_normal, tmp_uv, outside);
+			//}
 
-			if (hit_geom_index == -1)
+			if (t > 0.0f && t_min > t)
 			{
-				intersections[path_index].t = -1.0f;
+				t_min = t;
+				hit_geom_index = i;
+				intersect_point = tmp_intersect;
+				normal = tmp_normal;
+
+
+				uv = tmp_uv;
 			}
+
+		}
+
+		if (hit_geom_index == -1)
+		{
+			intersections[path_index].t = -1.0f;
+		}
+		else
+		{
+			//The ray hits something
+			intersections[path_index].t = t_min;
+			if (hit_geom_index >= geoms_size)
+				intersections[path_index].materialId = 1;
 			else
-			{
-				//The ray hits something
-				intersections[path_index].t = t_min;
-				if (hit_geom_index >= geoms_size)
-					intersections[path_index].materialId = 1;
-				else
-					intersections[path_index].materialId = geoms[hit_geom_index].materialid;
-				intersections[path_index].surfaceNormal = normal;
-				intersections[path_index].uv = uv;
+				intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+			intersections[path_index].surfaceNormal = normal;
+			intersections[path_index].uv = uv;
 
-			}
-
-
-			//if (isect.t >= MAX_INTERSECT_DIST) {
-			//	// hits nothing
-			//	pathSegments[path_index].remainingBounces = 0;
-			//}
-			//else {
-			//	intersections[path_index] = isect;
-			//}
 		}
 	}
 }

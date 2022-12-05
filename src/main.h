@@ -19,6 +19,7 @@
 #include "pathtrace.h"
 #include "utilities.h"
 #include "scene.h"
+#include "cudnn_helper.h"
 
 using namespace std;
 
@@ -41,9 +42,6 @@ extern float ui_colorWeight;
 extern float ui_normalWeight;
 extern float ui_positionWeight;
 extern bool ui_saveAndExit;
-
-
-
 
 void runCuda();
 void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);

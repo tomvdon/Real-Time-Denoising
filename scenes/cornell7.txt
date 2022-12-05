@@ -1,0 +1,124 @@
+MATERIAL 0
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   15
+
+MATERIAL 1
+RGB         .98 .98 .98
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 2
+RGB         .85 .35 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 3
+RGB         .35 .85 .35
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 4
+RGB         1 1 1
+SPECEX      0
+SPECRGB     0 0 0
+REFL        0
+REFR        0
+REFRIOR     0
+EMITTANCE   0
+
+MATERIAL 5
+RGB         0.134702 0.098897 0.334305
+SPECEX      0
+SPECRGB     0 0 0
+REFL        1
+REFR        1
+REFRIOR     0.072427
+EMITTANCE   0
+
+MATERIAL 6
+RGB         0.977645 0.553461 0.216238
+SPECEX      0
+SPECRGB     0 0 0
+REFL        1
+REFR        0
+REFRIOR     0.000000
+EMITTANCE   0
+
+CAMERA
+RES         800 800
+FOVY        45
+ITERATIONS  5000
+DEPTH       8
+FILE        cornellNUM
+EYE         0.0 5 7.5
+LOOKAT      0 5 0
+UP          0 1 0
+FOCAL       5
+LENSE       2
+
+OBJECT 0
+cube
+material 0
+TRANS       0 10 0
+ROTAT       0 0 0
+SCALE       3 .3 3
+
+OBJECT 1
+cube
+material 1
+TRANS       0 0 0
+ROTAT       0 0 0
+SCALE       10 .01 10
+
+OBJECT 2
+cube
+material 1
+TRANS       0 10 0
+ROTAT       0 0 90
+SCALE       .01 10 10
+
+OBJECT 3
+cube
+material 1
+TRANS       0 5 -5
+ROTAT       0 90 0
+SCALE       .01 10 10
+
+OBJECT 4
+cube
+material 2
+TRANS       -5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 5
+cube
+material 3
+TRANS       5 5 0
+ROTAT       0 0 0
+SCALE       .01 10 10
+
+OBJECT 6
+cube
+material 6
+TRANS       -3.190461 1.005588 3.705524
+ROTAT       77.012489 81.005974 34.767216
+SCALE       1.522337 1.522337 1.522337
+

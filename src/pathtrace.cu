@@ -101,6 +101,7 @@ static PathSegment* dev_first_paths = NULL;
 //for tiny_obj
 //static Object* dev_objects = NULL;
 static Geom* dev_tinyobj = NULL;
+static float* dev_denoise = NULL;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -136,7 +137,6 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_tinyobj, scene->Obj_geoms.size() * sizeof(Geom));
 	cudaMemcpy(dev_tinyobj, scene->Obj_geoms.data(), scene->Obj_geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
-
 	//BVH
 	cudaMalloc(&dev_tris, scene->num_tris * sizeof(Tri));
 	cudaMemcpy(dev_tris, scene->mesh_tris_sorted.data(), scene->num_tris * sizeof(Tri), cudaMemcpyHostToDevice);
@@ -144,8 +144,9 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_bvh_nodes, scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU));
 	cudaMemcpy(dev_bvh_nodes, scene->bvh_nodes_gpu.data(), scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU), cudaMemcpyHostToDevice);
 
-
-
+	// Denoise image buffer
+	cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
+	cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
 
 	checkCUDAError("pathtraceInit");
 }
@@ -163,10 +164,12 @@ void pathtraceFree() {
 #endif
 	cudaFree(dev_tinyobj);
 
-
 	//BVH
 	cudaFree(dev_tris);
 	cudaFree(dev_bvh_nodes);
+  
+	cudaFree(dev_denoise);
+
 
 	checkCUDAError("pathtraceFree");
 }
@@ -744,11 +747,146 @@ struct compareMaterial {
 	}
 };
 
+__global__ void vecToBuff(int numPixels, glm::vec3* image, float* denoise, glm::ivec2 resolution, int iter) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < resolution.x && y < resolution.y) {
+		int index = x + (y * resolution.x);
+		glm::vec3 pix = image[index];
+
+		glm::vec3 color;
+		color.x = glm::clamp((pix.x / iter), 0.f, 1.f);
+		color.y = glm::clamp((pix.y / iter), 0.f, 1.f);
+		color.z = glm::clamp((pix.z / iter), 0.f, 1.f);
+
+		// Each thread writes one pixel location in the texture (textel)
+		denoise[index] = color.x;
+		denoise[index + numPixels] = color.y;
+		denoise[index + 2 * numPixels] = color.z;
+	}
+}
+
+__global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::ivec2 resolution, int iter) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < resolution.x && y < resolution.y) {
+		int index = x + (y * resolution.x);
+
+		glm::vec3 color = glm::vec3(0,0,0);
+		color.x = glm::clamp(denoise[index], 0.f, 1.f);
+		color.y = glm::clamp(denoise[index + numPixels], 0.f, 1.f);
+		color.z = glm::clamp(denoise[index + 2 * numPixels], 0.f, 1.f);
+
+		// Each thread writes one pixel location in the texture (textel)
+		image[index] = color;
+	}
+}
+
+void dnCNN(std::vector<tensor>& filters, std::vector<tensor>& biases) {
+	cudnnHandle_t handle;
+	cudnnCreate(&handle);
+	const Camera& cam = hst_scene->state.camera;
+
+	tensor input = tensor(1, 3, cam.resolution.y, cam.resolution.x);
+	// Use copy of image so that we can subtract noise from original image
+	float* dev_input;
+	cudaMalloc(&dev_input, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+	cudaMemcpy(dev_input, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
+	input.dev = dev_input;
+	//input.host = h_input;
+
+	tensor output = tensor(1, 64, cam.resolution.y, cam.resolution.x);
+	float* dev_output;
+	cudaMalloc(&dev_output, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+	output.dev = dev_output;
+
+	//reshapeTensor(handle, input, CUDNN_TENSOR_NCHW, CUDNN_TENSOR_NHWC);
+	//float* temp = (float*)malloc(sizeof(float) * 3 * cam.resolution.y * cam.resolution.x);
+	//cudaMemcpy(temp, input.dev, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToHost);
+	//cv::Mat output_image(cam.resolution.y, cam.resolution.x, CV_32FC3, temp);
+	//cv::cvtColor(output_image, output_image, cv::COLOR_RGB2BGR, 3);
+	////// Make negative values zero.
+	//cv::threshold(output_image,
+	//	output_image,
+	//	/*threshold=*/0,
+	//	/*maxval=*/0,
+	//	cv::THRESH_TOZERO);
+	//cv::imshow("Display window", output_image);
+	//int k = cv::waitKey(0); // Wait for a keystroke in the 
+	//free(temp);
+	
+	const float alpha = 1.f, beta = 0.f;
+	cudnnActivationDescriptor_t activation;
+	checkCUDNN(cudnnCreateActivationDescriptor(&activation));
+	checkCUDNN(cudnnSetActivationDescriptor(activation,
+		CUDNN_ACTIVATION_RELU,
+		CUDNN_PROPAGATE_NAN,
+		0.0));
+
+	for (int i = 0; i < 20; ++i) {
+		// Load filter
+		int in_chan = 64;
+		int out_chan = 64;
+		if (i == 0) {
+			in_chan = 3;
+		}
+		if (i == 19) {
+			out_chan = 3;
+		}
+
+		// Conv forward
+		convolutionalForward(handle, input, filters[i], output);
+
+		// Add bias, done in place
+		addBias(handle, output, biases[i], false);
+
+		// ReLU
+		// TODO closer look at documentation, it says HW-packed is faster. Does this mean NHWC is faster than NCHW?
+		// Can be done in place
+		if (i != 19) {
+			cudnnTensorDescriptor_t output_descriptor;
+			createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, output.n, output.c, output.h, output.w);
+			checkCUDNN(cudnnActivationForward(handle,
+				activation,
+				&alpha,
+				output_descriptor,
+				output.dev,
+				&beta,
+				output_descriptor,
+				input.dev));
+			cudnnDestroyTensorDescriptor(output_descriptor);
+		}
+		// Free input stuff, set input to output
+		//cudaFree(input.dev);
+		//free(input.host);
+		input.n = output.n;
+		input.c = output.c;
+		input.h = output.h;
+		input.w = output.w;
+		//input.dev = output.dev;
+		//input.host = output.host;
+	}
+
+	tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
+	image.dev = dev_denoise;
+	addBias(handle, image, output, true);
+
+	cudnnDestroyActivationDescriptor(activation);
+	cudaFree(input.dev);
+	cudaFree(output.dev);
+	//free(input.host);
+	cudnnDestroy(handle);
+}
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
  */
-void pathtrace(uchar4 * pbo, int frame, int iter) {
+ 
+void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, std::vector<tensor>& biases) {
+
 	const int traceDepth = hst_scene->state.traceDepth;
 	const Camera& cam = hst_scene->state.camera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -810,7 +948,7 @@ void pathtrace(uchar4 * pbo, int frame, int iter) {
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
-	while (!iterationComplete) {
+	while (!iterationComplete && iter < 10) {
 
 		// clean shading chunks
 		cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -935,15 +1073,24 @@ void pathtrace(uchar4 * pbo, int frame, int iter) {
 		}
 	}
 
-	// Assemble this iteration and apply it to the image
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+	if (iter < 10) {
+		// Assemble this iteration and apply it to the image
+		finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+		// Send results to OpenGL buffer for rendering
+		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
+	}
+	else if (iter == 10) {
+		std::cout << "Denoising" << std::endl;
+		// Denoise
+		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
+		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
+		dnCNN(filters, biases);
+		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
+		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_image);
+	}
 
 	///////////////////////////////////////////////////////////////////////////
-
-	// Send results to OpenGL buffer for rendering
-	sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
-
 	// Retrieve image from GPU
 	cudaMemcpy(hst_scene->state.image.data(), dev_image,
 		pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);

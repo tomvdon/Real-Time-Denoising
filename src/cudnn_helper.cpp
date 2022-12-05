@@ -115,11 +115,11 @@ void createTensorDescriptor(cudnnTensorDescriptor_t& descriptor, cudnnTensorForm
 		/*image_width=*/w));
 }
 
-void readBias(tensor& input, tensor& output, std::string bias_path) {
+void readBias(int channels, tensor& output, std::string bias_path) {
 	// This function reads in a csv file where each row contains a single value that is the bias term for that channel
-	// Expects the csv file to have number of lines == input.c
-	// Creates tensor that is size input.n, input.c, input.h, input.w by repeating the bias term for each channel to form a h,w arr
-	// Uses input tensor to know how many lines to read, Outputs to output tensor
+	// Expects the csv file to have number of lines == channels
+	// cudnn accepts tensors where:
+	// "Each dimension of the bias tensor A must match the corresponding dimension of the destination tensor C or must be equal to 1."
 
 	std::ifstream fp_in;
 	fp_in.open(bias_path);
@@ -128,33 +128,39 @@ void readBias(tensor& input, tensor& output, std::string bias_path) {
 		throw;
 	}
 
-	int out_size = sizeof(float) * input.n * input.c * input.h * input.w;
+	//int out_size = sizeof(float) * input.n * input.c * input.h * input.w;
+	int out_size = sizeof(float) * channels;
 	float* h_out = (float*)malloc(out_size);
 	float* d_out;
 	cudaMalloc(&d_out, out_size);
 	cudaMemset(d_out, 0.f, out_size);
 
-	for (int i = 0; i < input.c; ++i) {
+	for (int i = 0; i < channels; ++i) {
 		std::string line;
 		utilityCore::safeGetline(fp_in, line);
 		float bias = std::stof(line);
 		//std::cout << "Bias " << bias << " in channel " << i << std::endl;
-		for (int j = 0; j < input.n; ++j) {
-			for (int k = 0; k < input.h; ++k) {
-				for (int l = 0; l < input.w; ++l) {
-					int index = j * input.c * input.h * input.w + i * input.h * input.w + k * input.w + l;
-					h_out[index] = bias;
-				}
-			}
-		}
+		//for (int j = 0; j < input.n; ++j) {
+		//	for (int k = 0; k < input.h; ++k) {
+		//		for (int l = 0; l < input.w; ++l) {
+		//			int index = j * input.c * input.h * input.w + i * input.h * input.w + k * input.w + l;
+		//			h_out[index] = bias;
+		//		}
+		//	}
+		//}
+		h_out[i] = bias;
 	}
 
 	cudaMemcpy(d_out, h_out, out_size, cudaMemcpyHostToDevice);
 
-	output.n = input.n;
-	output.c = input.c;
-	output.h = input.h;
-	output.w = input.w;
+	//output.n = input.n;
+	//output.c = input.c;
+	//output.h = input.h;
+	//output.w = input.w;
+	output.n = 1;
+	output.c = channels;
+	output.h = 1;
+	output.w = 1;
 
 	output.host = h_out;
 	output.dev = d_out;
@@ -211,7 +217,7 @@ void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, t
 	//std::cout << "Out size " << out_n << ", " << out_c << ", " << out_h << ", " << out_w << std::endl;
 	int output_bytes = out_n * out_c * out_h * out_w * sizeof(float);
 	float* d_out{ nullptr };
-	float* h_out = (float*)malloc(output_bytes);
+	//float* h_out = (float*)malloc(output_bytes);
 	cudaMalloc(&d_out, output_bytes);
 	cudaMemset(d_out, 0, output_bytes);
 
@@ -257,14 +263,10 @@ void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, t
 		output_descriptor,
 		d_out));
 	// Copy back to host
-	cudaMemcpy(h_out, d_out, output_bytes, cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_out, d_out, output_bytes, cudaMemcpyDeviceToHost);
 
-	output.host = h_out;
+	//output.host = h_out;
 	output.dev = d_out;
-
-	//for (int i = 0; i < 100; ++i) {
-	//	std::cout << input.host[i] << ", " << output.host[i] << std::endl;
-	//}
 
 	// Free up stuff
 	cudaFree(d_workspace);
@@ -275,7 +277,7 @@ void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, t
 	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 }
 
-void addBias(cudnnHandle_t handle, tensor& input, tensor& bias) {
+void addBias(cudnnHandle_t handle, tensor& input, tensor& bias, bool subtract) {
 	// Similar to convolutional forward but adds the bias term
 	// cudnnAddTensor is done in place
 
@@ -288,11 +290,12 @@ void addBias(cudnnHandle_t handle, tensor& input, tensor& bias) {
 	createTensorDescriptor(bias_descriptor, CUDNN_TENSOR_NCHW, bias.n, bias.c, bias.h, bias.w);
 
 	// 'C' tensor is the output tensor, 'A' tensor is the bias tensor
-	const float alpha = 1, beta = 1;
+	const float beta = 1;
+	const float alpha = subtract ? -1 : 1;
 	checkCUDNN(cudnnAddTensor(handle, &alpha, bias_descriptor, bias.dev, &beta, input_descriptor, input.dev));
 
 	// Copy to host tensor
-	cudaMemcpy(input.host, input.dev, sizeof(float) * input.n * input.c * input.h * input.w, cudaMemcpyDeviceToHost);
+	//cudaMemcpy(input.host, input.dev, sizeof(float) * input.n * input.c * input.h * input.w, cudaMemcpyDeviceToHost);
 
 	cudnnDestroyTensorDescriptor(input_descriptor);
 	cudnnDestroyTensorDescriptor(bias_descriptor);
@@ -323,7 +326,7 @@ void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_forma
 
 	int size = sizeof(float) * t.n * t.c * t.h * t.w;
 	float* d_reshaped;
-	float* h_reshaped = (float*)malloc(size);
+	//float* h_reshaped = (float*)malloc(size);
 	cudaMalloc(&d_reshaped, size);
 
 	const float alpha = 1, beta = 0;
@@ -335,13 +338,13 @@ void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_forma
 		reshaped_desc,
 		d_reshaped));
 
-	cudaMemcpy(h_reshaped, d_reshaped, size, cudaMemcpyDeviceToHost);
+	//cudaMemcpy(h_reshaped, d_reshaped, size, cudaMemcpyDeviceToHost);
 
 	cudaFree(t.dev);
-	free(t.host);
+	//free(t.host);
 
 	t.dev = d_reshaped;
-	t.host = h_reshaped;
+	//t.host = h_reshaped;
 }
 
 void logTensor(tensor& t, std::string out_path, std::string name) {
@@ -365,5 +368,34 @@ void logTensor(tensor& t, std::string out_path, std::string name) {
 			}
 		}
 		fp_out.close();
+	}
+}
+
+void loadDncnn(std::vector<tensor>& filters, std::vector<tensor>& biases, std::string model_path) {
+	for (int i = 0; i < 20; ++i) {
+		// Load filter
+		int in_chan = 64;
+		int out_chan = 64;
+		if (i == 0) {
+			in_chan = 3;
+		}
+		if (i == 19) {
+			out_chan = 3;
+		}
+		tensor kernel = tensor(out_chan, in_chan, 3, 3);
+		std::ostringstream path_stream;
+		path_stream << model_path << i * 2 << "_weight.csv";
+		std::string f_path = path_stream.str();
+		read_filter(kernel, f_path);
+
+		// Add bias, done in place
+		std::ostringstream bias_stream;
+		bias_stream << model_path << i * 2 << "_bias.csv";
+		std::string bias_path = bias_stream.str();
+		tensor bias = tensor();
+		readBias(out_chan, bias, bias_path);
+
+		filters.push_back(kernel);
+		biases.push_back(bias);
 	}
 }

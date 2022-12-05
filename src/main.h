@@ -19,6 +19,7 @@
 #include "pathtrace.h"
 #include "utilities.h"
 #include "scene.h"
+#include "cudnn_helper.h"
 
 using namespace std;
 

@@ -824,7 +824,7 @@ void dnCNN(std::vector<tensor>& filters, std::vector<tensor>& biases) {
 		CUDNN_ACTIVATION_RELU,
 		CUDNN_PROPAGATE_NAN,
 		0.0));
-
+	auto nn_start = chrono::high_resolution_clock::now();
 	for (int i = 0; i < 20; ++i) {
 		// Load filter
 		int in_chan = 64;
@@ -868,6 +868,9 @@ void dnCNN(std::vector<tensor>& filters, std::vector<tensor>& biases) {
 		//input.dev = output.dev;
 		//input.host = output.host;
 	}
+	auto nn_end = chrono::high_resolution_clock::now();
+	auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
+	std::cout << "NN DUR: " << nn_duration.count() << std::endl;
 
 	tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	image.dev = dev_denoise;
@@ -886,7 +889,7 @@ void dnCNN(std::vector<tensor>& filters, std::vector<tensor>& biases) {
  */
  
 void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, std::vector<tensor>& biases) {
-
+	auto pt_start = chrono::high_resolution_clock::now();
 	const int traceDepth = hst_scene->state.traceDepth;
 	const Camera& cam = hst_scene->state.camera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
@@ -899,6 +902,11 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 
 	// 1D block for path tracing
 	const int blockSize1d = 128;
+	long long intersections = 0;
+	long long shading_time = 0;
+	long long material_time = 0;
+	long long compaction = 0;
+	long long ray_time = 0;
 
 	///////////////////////////////////////////////////////////////////////////
 
@@ -936,9 +944,17 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 		checkCUDAError("generate camera ray");
 	}
 	cudaMemcpy(dev_paths, dev_first_paths, pixelcount * sizeof(PathSegment), cudaMemcpyDeviceToDevice);
+
 #else
+	auto ray_start = chrono::high_resolution_clock::now();
+
 	generateRayFromCamera << <blocksPerGrid2d, blockSize2d >> > (cam, iter, traceDepth, dev_paths);
 	checkCUDAError("generate camera ray");
+	cudaDeviceSynchronize();
+	auto ray_end = chrono::high_resolution_clock::now();
+	auto ray_duration = std::chrono::duration_cast<std::chrono::microseconds>(ray_end - ray_start);
+
+	ray_time += ray_duration.count();
 #endif
 	int depth = 0;
 	PathSegment* dev_path_end = dev_paths + pixelcount;
@@ -1005,7 +1021,7 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 		//	dev_intersections,
 		//	iter
 		//	);
-
+		auto inter_start = chrono::high_resolution_clock::now();
 		computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (
 			depth
 			, num_paths
@@ -1019,6 +1035,10 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 			);
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
+		auto inter_end = chrono::high_resolution_clock::now();
+		auto inter_duration = std::chrono::duration_cast<std::chrono::microseconds>(inter_end - inter_start);
+		intersections += inter_duration.count();
+
 #endif
 
 		depth++;
@@ -1040,6 +1060,8 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 			dev_materials
 		);*/
 		auto pos = cam.position;
+		auto shade_start = chrono::high_resolution_clock::now();
+
 		kernSimpleShade << <numblocksPathSegmentTracing, blockSize1d >> > (
 			iter,
 			num_paths,
@@ -1049,19 +1071,36 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 			dev_materials,
 			pos
 			);
+		cudaDeviceSynchronize();
+		auto shade_end = chrono::high_resolution_clock::now();
+		auto shade_duration = std::chrono::duration_cast<std::chrono::microseconds>(shade_end - shade_start);
+		shading_time += shade_duration.count();
 
 		//stream compaction
+		auto compaction_start = chrono::high_resolution_clock::now();
+
 #if COMPACTION
 		//referring to the first element of the second partition
 		dev_path_end = thrust::stable_partition(thrust::device, dev_paths, dev_path_end, isZero());
 		num_paths = dev_path_end - dev_paths;
 #endif
+		cudaDeviceSynchronize();
+		auto compaction_end = chrono::high_resolution_clock::now();
+		auto compaction_duration = std::chrono::duration_cast<std::chrono::microseconds>(compaction_end - compaction_start);
+		compaction += compaction_duration.count();
+
+		auto material_start = chrono::high_resolution_clock::now();
 
 #if SORT_MATERIAL
 		//sort dev_intersectoins and dev_paths based on materialId
 		thrust::stable_sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, compareMaterial());
 #endif
+		cudaDeviceSynchronize();
+		auto material_end = chrono::high_resolution_clock::now();
+		auto material_duration = std::chrono::duration_cast<std::chrono::microseconds>(material_end - material_start);
+		std::cout << "Material: " << material_time << std::endl;
 
+		material_time += material_duration.count();
 
 		if (depth >= traceDepth || num_paths == 0)
 			iterationComplete = true; // TODO: should be based off stream compaction results.
@@ -1073,6 +1112,17 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 		}
 	}
 
+	auto pt_end = chrono::high_resolution_clock::now();
+	auto pt_duration = std::chrono::duration_cast<std::chrono::microseconds>(pt_end - pt_start);
+	if (iter == 9)
+	{
+		std::cout << "PathTracing " << pt_duration.count() << std::endl;
+		std::cout << "Ray Generation: " << ray_time << std::endl;
+		std::cout << "Intersection: " << intersections << std::endl;
+		std::cout << "Compaction: " << compaction << std::endl;
+		std::cout << "Material: " << material_time << std::endl;
+		std::cout << "Shading: " << shading_time << std::endl;
+	}
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
 	if (iter < 10) {
 		// Assemble this iteration and apply it to the image
@@ -1081,12 +1131,27 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
 	else if (iter == 10) {
+
+
+		auto dn_start = chrono::high_resolution_clock::now();
+
 		std::cout << "Denoising" << std::endl;
+
 		// Denoise
 		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
+		
 		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
+		auto dncnn_start = chrono::high_resolution_clock::now();
 		dnCNN(filters, biases);
+		auto dncnn_end = chrono::high_resolution_clock::now();
+		auto dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
+		auto dn_end = chrono::high_resolution_clock::now();
+		auto dn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dn_end - dn_start);
+		std::cout << "DN Time: " << dn_duration.count() << std::endl;
+		std::cout << "DNCNN Time: " << dncnn_duration.count() << std::endl;
+
+
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_image);
 	}
 

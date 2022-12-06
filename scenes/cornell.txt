@@ -148,10 +148,3 @@ TRANS       0 2 3
 ROTAT       0 0 0
 SCALE       2 2 2
 
-// floor light
-OBJECT 9
-cube
-material 0
-TRANS       -5 5 0
-ROTAT       0 0 0
-SCALE       .3 3 3

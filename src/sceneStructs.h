@@ -102,12 +102,12 @@ struct Material {
         float exponent;
         glm::vec3 color;
     } specular;
-    float hasReflective{0};
-    float hasRefractive{0};
-    float indexOfRefraction{0};
-    float emittance{0};
-    float microfacet{0};
-    float roughness{0};
+    float hasReflective{ 0 };
+    float hasRefractive{ 0 };
+    float indexOfRefraction{ 0 };
+    float emittance{ 0 };
+    float microfacet{ 0 };
+    float roughness{ 0 };
     float metalness{ 0 };
 
     const char* textureName;
@@ -151,10 +151,10 @@ struct PathSegment {
 // 1) color contribution computation
 // 2) BSDF evaluation: generate a new ray
 struct ShadeableIntersection {
-  float t;
-  glm::vec3 surfaceNormal;
-  int materialId;
-  glm::vec2 uv;
+    float t;
+    glm::vec3 surfaceNormal;
+    int materialId;
+    glm::vec2 uv;
 };
 
 struct Triangle {
@@ -207,4 +207,52 @@ private:
         ar& position.z;
 
     }
+};
+};
+
+
+struct TriBounds {
+    glm::vec3 AABB_min;
+    glm::vec3 AABB_max;
+    glm::vec3 AABB_centroid;
+    int tri_ID;
+};
+
+struct BVHNode {
+    glm::vec3 AABB_min;
+    glm::vec3 AABB_max;
+    BVHNode* child_nodes[2];
+    int split_axis;
+    int tri_index;
+};
+
+struct BVHNode_GPU {
+    glm::vec3 AABB_min;
+    glm::vec3 AABB_max;
+    int tri_index;
+    int offset_to_second_child;
+    int axis;
+};
+
+struct Tri {
+    // positions
+    glm::vec3 p0;
+    glm::vec3 p1;
+    glm::vec3 p2;
+    // normals
+    glm::vec3 n0;
+    glm::vec3 n1;
+    glm::vec3 n2;
+    // uvs
+    glm::vec2 t0;
+    glm::vec2 t1;
+    glm::vec2 t2;
+    //transforms
+    glm::mat4 transform;
+    glm::mat4 inverseTransform;
+    glm::mat4 invTranspose;
+    // plane normal
+    glm::vec3 plane_normal;
+    float S;
+    int mat_ID;
 };

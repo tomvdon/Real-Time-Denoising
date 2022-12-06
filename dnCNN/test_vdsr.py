@@ -47,12 +47,11 @@ if __name__ == '__main__':
     plt.imshow(img.permute(1,2,0))
     plt.show()
 
-    img_upscale = F.interpolate(img, scale_factor=2, mode='bicubic', align_corners=False)
-    plt.imshow(img_upscale.permute(1,2,0))
+    img_downscale = F.interpolate(img.unsqueeze(dim=0), scale_factor=.25).squeeze()
+    plt.imshow(img_downscale.permute(1,2,0))
     plt.show()
 
-    img_y = rgb2ycbcr(img.permute(1,2,0).numpy(), use_y_channel=False)
-
+    img_y = rgb2ycbcr(img_downscale.permute(1,2,0).numpy(), use_y_channel=False)
 
     with torch.no_grad():
         model_out = model(torch.tensor(img_y[..., -1]).unsqueeze(dim=0).to(device)).clamp(0.0, 1.0)

@@ -31,6 +31,9 @@
 
 #define FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define checkCUDAError(msg) checkCUDAErrorFn(msg, FILENAME, __LINE__)
+
+bool denoise_on = true;
+
 void checkCUDAErrorFn(const char* msg, const char* file, int line) {
 #if ERRORCHECK
 	cudaDeviceSynchronize();
@@ -948,7 +951,7 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
-	while (!iterationComplete && iter < 10) {
+	while (!iterationComplete && (!denoise_on || iter < 10)) {
 
 		// clean shading chunks
 		cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -1074,13 +1077,13 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 	}
 
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-	if (iter < 10) {
+	if (!denoise_on || iter < 10) {
 		// Assemble this iteration and apply it to the image
 		finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
 		// Send results to OpenGL buffer for rendering
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
-	else if (iter == 10) {
+	else if (denoise_on && iter == 10) {
 		std::cout << "Denoising" << std::endl;
 		// Denoise
 		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?

@@ -360,7 +360,7 @@ int main(int argc, char** argv) {
 	init();
 
 	// Load dnCNN
-	loadDncnn(filters, biases, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_bn\\");
+	loadDncnn(filters, biases, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);

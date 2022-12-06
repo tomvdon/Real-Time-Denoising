@@ -37,7 +37,7 @@ int iteration;
 
 int width;
 int height;
-
+#include <chrono>
 static std::vector<tensor> filters;
 static std::vector<tensor> biases;
 
@@ -407,6 +407,7 @@ void saveImage() {
 }
 
 void runCuda() {
+	auto start = chrono::high_resolution_clock::now();
 	if (camchanged) {
 		iteration = 0;
 		Camera& cam = renderState->camera;
@@ -460,6 +461,9 @@ void runCuda() {
 		cudaDeviceReset();
 		exit(EXIT_SUCCESS);
 	}
+	auto end = chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	//std::cout << "One Iteration: " << duration.count() << std::endl;
 }
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {

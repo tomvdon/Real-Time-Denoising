@@ -1,16 +1,5 @@
 #include "cudnn_helper.h"
 
-// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
-//#define checkCUDNN(expression)                               \
-//  {                                                          \
-//    cudnnStatus_t status = (expression);                     \
-//    if (status != CUDNN_STATUS_SUCCESS) {                    \
-//      std::cerr << "Error on line " << __LINE__ << ": "      \
-//                << cudnnGetErrorString(status) << std::endl; \
-//      std::exit(EXIT_FAILURE);                               \
-//    }                                                        \
-//  }
-
 cv::Mat load_image(const char* image_path) {
 	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 	cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
@@ -168,137 +157,60 @@ void readBias(int channels, tensor& output, std::string bias_path) {
 	fp_in.close();
 }
 
-void convolutionalForward(cudnnHandle_t handle, tensor& input, tensor& kernel, tensor& output) {
+void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output) {
 	// Assumes input and out are always NHWC
 	// Outputs tensor struct
 
-	// Define input
-	cudnnTensorDescriptor_t input_descriptor;
-	createTensorDescriptor(input_descriptor, CUDNN_TENSOR_NCHW, input.n, input.c, input.h, input.w);
-
-	// Define kernel
-	cudnnFilterDescriptor_t kernel_descriptor;
-	checkCUDNN(cudnnCreateFilterDescriptor(&kernel_descriptor));
-	checkCUDNN(cudnnSetFilter4dDescriptor(kernel_descriptor,
-		/*dataType=*/CUDNN_DATA_FLOAT,
-		/*format=*/CUDNN_TENSOR_NCHW,
-		/*out_channels=*/kernel.n,
-		/*in_channels=*/kernel.c,
-		/*kernel_height=*/kernel.h,
-		/*kernel_width=*/kernel.w));
-
-	// Define convolution
-	cudnnConvolutionDescriptor_t convolution_descriptor;
-	checkCUDNN(cudnnCreateConvolutionDescriptor(&convolution_descriptor));
-	checkCUDNN(cudnnSetConvolution2dDescriptor(convolution_descriptor,
-		/*pad_height=*/1,
-		/*pad_width=*/1,
-		/*vertical_stride=*/1,
-		/*horizontal_stride=*/1,
-		/*dilation_height=*/1,
-		/*dilation_width=*/1,
-		/*mode=*/CUDNN_CROSS_CORRELATION,
-		/*computeType=*/CUDNN_DATA_FLOAT));
-	// Calc and define output dimensions
-	int out_n, out_c, out_h, out_w;
-	checkCUDNN(cudnnGetConvolution2dForwardOutputDim(
-		convolution_descriptor,
-		input_descriptor,
-		kernel_descriptor,
-		&out_n, &out_c, &out_h, &out_w));
-	cudnnTensorDescriptor_t output_descriptor;
-	createTensorDescriptor(output_descriptor, CUDNN_TENSOR_NCHW, out_n, out_c, out_h, out_w);
-
-	//// Allocate output
-	output.n = out_n;
-	output.c = out_c;
-	output.h = out_h;
-	output.w = out_w;
-	////std::cout << "Out size " << out_n << ", " << out_c << ", " << out_h << ", " << out_w << std::endl;
-	//int output_bytes = out_n * out_c * out_h * out_w * sizeof(float);
-	//float* d_out{ nullptr };
-	////float* h_out = (float*)malloc(output_bytes);
-	//cudaMalloc(&d_out, output_bytes);
-	//cudaMemset(d_out, 0, output_bytes);
-
-	// Find fastest conv algorithim
-	cudnnConvolutionFwdAlgoPerf_t convolution_algorithm;
-	int num_algs = 0;
-	checkCUDNN(
-		cudnnFindConvolutionForwardAlgorithm(handle,
-			input_descriptor,
-			kernel_descriptor,
-			convolution_descriptor,
-			output_descriptor,
-			/*RequestedNumAlgs*/1,
-			/*ReturnedNumAlgs*/&num_algs,
-			&convolution_algorithm));
+	auto setup_start = chrono::high_resolution_clock::now();
 
 	// Find workspace size needed
 	size_t workspace_bytes = 0;
 	checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(handle,
-		input_descriptor,
-		kernel_descriptor,
-		convolution_descriptor,
-		output_descriptor,
-		convolution_algorithm.algo,
+		l.input_desc,
+		l.filter_desc,
+		l.convolution,
+		l.output_desc,
+		l.conv_alg.algo,
 		&workspace_bytes));
-
 	void* d_workspace{ nullptr };
 	cudaMalloc(&d_workspace, workspace_bytes);
+	auto setup_end = chrono::high_resolution_clock::now();
+	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	std::cout << "workspace setup: " << setup_duration.count() << std::endl;
 
+	setup_start = chrono::high_resolution_clock::now();
 	// Do convolution forward
 	const float alpha = 1, beta = 0;
 	checkCUDNN(cudnnConvolutionForward(handle,
 		&alpha,
-		input_descriptor,
+		l.input_desc,
 		input.dev,
-		kernel_descriptor,
-		kernel.dev,
-		convolution_descriptor,
-		convolution_algorithm.algo,
+		l.filter_desc,
+		l.filter.dev,
+		l.convolution,
+		l.conv_alg.algo,
 		d_workspace,
 		workspace_bytes,
 		&beta,
-		output_descriptor,
+		l.output_desc,
 		output.dev));
-	// Copy back to host
-	//cudaMemcpy(h_out, d_out, output_bytes, cudaMemcpyDeviceToHost);
-
-	//output.host = h_out;
-	//output.dev = d_out;
 
 	// Free up stuff
 	cudaFree(d_workspace);
 
-	cudnnDestroyTensorDescriptor(input_descriptor);
-	cudnnDestroyTensorDescriptor(output_descriptor);
-	cudnnDestroyFilterDescriptor(kernel_descriptor);
-	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
+	setup_end = chrono::high_resolution_clock::now();
+	setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	std::cout << "conv forward: " << setup_duration.count() << std::endl;
 }
 
-void addBias(cudnnHandle_t handle, tensor& input, tensor& bias, bool subtract) {
+void addBias(cudnnHandle_t handle, layer& l, tensor& input, bool subtract) {
 	// Similar to convolutional forward but adds the bias term
 	// cudnnAddTensor is done in place
-
-	// Define input
-	cudnnTensorDescriptor_t input_descriptor;
-	createTensorDescriptor(input_descriptor, CUDNN_TENSOR_NCHW, input.n, input.c, input.h, input.w);
-
-	// Define bias
-	cudnnTensorDescriptor_t bias_descriptor;
-	createTensorDescriptor(bias_descriptor, CUDNN_TENSOR_NCHW, bias.n, bias.c, bias.h, bias.w);
 
 	// 'C' tensor is the output tensor, 'A' tensor is the bias tensor
 	const float beta = 1;
 	const float alpha = subtract ? -1 : 1;
-	checkCUDNN(cudnnAddTensor(handle, &alpha, bias_descriptor, bias.dev, &beta, input_descriptor, input.dev));
-
-	// Copy to host tensor
-	//cudaMemcpy(input.host, input.dev, sizeof(float) * input.n * input.c * input.h * input.w, cudaMemcpyDeviceToHost);
-
-	cudnnDestroyTensorDescriptor(input_descriptor);
-	cudnnDestroyTensorDescriptor(bias_descriptor);
+	checkCUDNN(cudnnAddTensor(handle, &alpha, l.bias_desc, l.bias.dev, &beta, l.output_desc, input.dev));
 }
 
 void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_format, cudnnTensorFormat_t out_format) {
@@ -371,7 +283,7 @@ void logTensor(tensor& t, std::string out_path, std::string name) {
 	}
 }
 
-void loadDncnn(std::vector<tensor>& filters, std::vector<tensor>& biases, std::string model_path) {
+void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path) {
 	for (int i = 0; i < 20; ++i) {
 		// Load filter
 		int in_chan = 64;
@@ -382,20 +294,67 @@ void loadDncnn(std::vector<tensor>& filters, std::vector<tensor>& biases, std::s
 		if (i == 19) {
 			out_chan = 3;
 		}
-		tensor kernel = tensor(out_chan, in_chan, 3, 3);
+
+		layer l;
+
+		// Read weights and biases and define descriptors
+		l.filter = tensor(out_chan, in_chan, 3, 3);
 		std::ostringstream path_stream;
 		path_stream << model_path << i * 2 << "_weight.csv";
 		std::string f_path = path_stream.str();
-		read_filter(kernel, f_path);
+		read_filter(l.filter, f_path);
+		checkCUDNN(cudnnCreateFilterDescriptor(&l.filter_desc));
+		checkCUDNN(cudnnSetFilter4dDescriptor(l.filter_desc,
+			/*dataType=*/CUDNN_DATA_FLOAT,
+			/*format=*/CUDNN_TENSOR_NCHW,
+			/*out_channels=*/out_chan,
+			/*in_channels=*/in_chan,
+			/*kernel_height=*/3,
+			/*kernel_width=*/3));
 
-		// Add bias, done in place
 		std::ostringstream bias_stream;
 		bias_stream << model_path << i * 2 << "_bias.csv";
 		std::string bias_path = bias_stream.str();
-		tensor bias = tensor();
-		readBias(out_chan, bias, bias_path);
+		l.bias = tensor();
+		readBias(out_chan, l.bias, bias_path);
+		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NCHW, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
 
-		filters.push_back(kernel);
-		biases.push_back(bias);
+		//Define input out descriptors
+		// TODO probably need a better way to do this if the stride/padding make it so that resolution changes
+		// Would probably involve using:
+			// Calc and define output dimensions
+			//int out_n, out_c, out_h, out_w;
+			//checkCUDNN(cudnnGetConvolution2dForwardOutputDim(
+			//	convolution_descriptor,
+			//	input_descriptor,
+			//	kernel_descriptor,
+			//	&out_n, &out_c, &out_h, &out_w));
+
+		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NCHW, 1, in_chan, height, width);
+		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NCHW, 1, out_chan, height, width);
+
+		//Define convolution and convolution alg
+		checkCUDNN(cudnnCreateConvolutionDescriptor(&l.convolution));
+		checkCUDNN(cudnnSetConvolution2dDescriptor(l.convolution,
+			/*pad_height=*/1,
+			/*pad_width=*/1,
+			/*vertical_stride=*/1,
+			/*horizontal_stride=*/1,
+			/*dilation_height=*/1,
+			/*dilation_width=*/1,
+			/*mode=*/CUDNN_CROSS_CORRELATION,
+			/*computeType=*/CUDNN_DATA_FLOAT));
+		int num_algs = 0;
+		checkCUDNN(
+			cudnnFindConvolutionForwardAlgorithm(handle,
+				l.input_desc,
+				l.filter_desc,
+				l.convolution,
+				l.output_desc,
+				/*RequestedNumAlgs*/1,
+				/*ReturnedNumAlgs*/&num_algs,
+				&l.conv_alg));
+		// TODO maybe add workspace loading ?
+		model.push_back(l);
 	}
 }

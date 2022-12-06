@@ -38,8 +38,12 @@ int iteration;
 int width;
 int height;
 #include <chrono>
-static std::vector<tensor> filters;
-static std::vector<tensor> biases;
+
+//cuDNN stuff
+// TODO maybe have a global activation and convolution descriptor?
+// or at least in layer ?
+static cudnnHandle_t handle;
+static std::vector<layer> model;
 
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
@@ -359,8 +363,9 @@ int main(int argc, char** argv) {
 	// Initialize CUDA and GL components
 	init();
 
-	// Load dnCNN
-	loadDncnn(filters, biases, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
+	//dnCNN init
+	cudnnCreate(&handle);
+	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);
@@ -369,16 +374,18 @@ int main(int argc, char** argv) {
 	// GLFW main loop
 	mainLoop();
 
-	// Free model
-	// TODO maybe we dont need host buffers?
-	for (tensor t : filters) {
-		cudaFree(t.dev);
-		free(t.host);
+	//dnCNN cleanup
+	for (layer& l : model) {
+		cudaFree(l.filter.dev);
+		cudaFree(l.bias.dev);
+		free(l.filter.host);
+		free(l.bias.host);
+		cudnnDestroyTensorDescriptor(l.input_desc);
+		cudnnDestroyTensorDescriptor(l.output_desc);
+		cudnnDestroyFilterDescriptor(l.filter_desc);
+		cudnnDestroyConvolutionDescriptor(l.convolution);
 	}
-	for (tensor t : biases) {
-		cudaFree(t.dev);
-		free(t.host);
-	}
+	cudnnDestroy(handle);
 
 	return 0;
 }
@@ -446,7 +453,7 @@ void runCuda() {
 		auto start = std::chrono::steady_clock::now();
 
 		int frame = 0;
-		pathtrace(pbo_dptr, frame, iteration, filters, biases);
+		pathtrace(pbo_dptr, handle, model, frame, iteration);
 
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> elapsed_seconds = end - start;

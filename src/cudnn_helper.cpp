@@ -76,7 +76,8 @@ void read_filter(tensor& filter, std::string f_path) {
 					pos = line.find(delimiter);
 					token = line.substr(0, pos);
 					float t = std::stof(token);
-					int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l;
+					//int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l; //NCHW
+					int index = i * filter.h * filter.w * filter.c + k * filter.w * filter.c + l * filter.c + j; //NHWC
 					//std::cout << "setting index " << index << " to " << t << std::endl;
 					h_arr[index] = t;
 					line.erase(0, pos + delimiter.length());
@@ -158,9 +159,6 @@ void readBias(int channels, tensor& output, std::string bias_path) {
 }
 
 void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output) {
-	// Assumes input and out are always NHWC
-	// Outputs tensor struct
-
 	auto setup_start = chrono::high_resolution_clock::now();
 
 	// Find workspace size needed
@@ -306,7 +304,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 		checkCUDNN(cudnnCreateFilterDescriptor(&l.filter_desc));
 		checkCUDNN(cudnnSetFilter4dDescriptor(l.filter_desc,
 			/*dataType=*/CUDNN_DATA_FLOAT,
-			/*format=*/CUDNN_TENSOR_NCHW,
+			/*format=*/CUDNN_TENSOR_NHWC,
 			/*out_channels=*/out_chan,
 			/*in_channels=*/in_chan,
 			/*kernel_height=*/3,
@@ -317,7 +315,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 		std::string bias_path = bias_stream.str();
 		l.bias = tensor();
 		readBias(out_chan, l.bias, bias_path);
-		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NCHW, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
+		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NHWC, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
 
 		//Define input out descriptors
 		// TODO probably need a better way to do this if the stride/padding make it so that resolution changes
@@ -330,8 +328,8 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 			//	kernel_descriptor,
 			//	&out_n, &out_c, &out_h, &out_w));
 
-		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NCHW, 1, in_chan, height, width);
-		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NCHW, 1, out_chan, height, width);
+		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NHWC, 1, in_chan, height, width);
+		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NHWC, 1, out_chan, height, width);
 
 		//Define convolution and convolution alg
 		checkCUDNN(cudnnCreateConvolutionDescriptor(&l.convolution));
@@ -355,6 +353,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 				/*ReturnedNumAlgs*/&num_algs,
 				&l.conv_alg));
 		// TODO maybe add workspace loading ?
+		std::cout << l.conv_alg.algo << std::endl;
 		model.push_back(l);
 	}
 }

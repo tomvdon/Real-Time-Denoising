@@ -764,9 +764,15 @@ __global__ void vecToBuff(int numPixels, glm::vec3* image, float* denoise, glm::
 		color.z = glm::clamp((pix.z / iter), 0.f, 1.f);
 
 		// Each thread writes one pixel location in the texture (textel)
-		denoise[index] = color.x;
-		denoise[index + numPixels] = color.y;
-		denoise[index + 2 * numPixels] = color.z;
+		int buff_idx = index * 3;
+		//NCHW
+		//denoise[index] = color.x;
+		//denoise[index + numPixels] = color.y;
+		//denoise[index + 2 * numPixels] = color.z;
+		//NHWC
+		denoise[buff_idx] = color.r;
+		denoise[buff_idx + 1] = color.g;
+		denoise[buff_idx + 2] = color.b;
 	}
 }
 
@@ -775,12 +781,16 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
 
 	if (x < resolution.x && y < resolution.y) {
-		int index = x + (y * resolution.x);
+		int index = x + (y * resolution.x); //NCHW
+		int buff_idx = index * 3;
 
 		glm::vec3 color = glm::vec3(0,0,0);
-		color.x = glm::clamp(denoise[index], 0.f, 1.f);
-		color.y = glm::clamp(denoise[index + numPixels], 0.f, 1.f);
-		color.z = glm::clamp(denoise[index + 2 * numPixels], 0.f, 1.f);
+		//color.x = glm::clamp(denoise[index], 0.f, 1.f);
+		//color.y = glm::clamp(denoise[index + numPixels], 0.f, 1.f);
+		//color.z = glm::clamp(denoise[index + 2 * numPixels], 0.f, 1.f);
+		color.r = glm::clamp(denoise[buff_idx], 0.f, 1.f);
+		color.g = glm::clamp(denoise[buff_idx + 1], 0.f, 1.f);
+		color.b = glm::clamp(denoise[buff_idx + 2], 0.f, 1.f);
 
 		// Each thread writes one pixel location in the texture (textel)
 		image[index] = color;
@@ -870,7 +880,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
 		std::cout << "layer " << i << " :" << setup_duration.count() << std::endl;
 	}
-
+	
 	//tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	//image.dev = dev_denoise;
 	const float sub_alpha = -1.f, sub_beta = 1.f;

@@ -86,6 +86,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution,
 static Scene* hst_scene = NULL;
 static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
+static glm::vec3* dev_dn_image = NULL;
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
@@ -119,6 +120,9 @@ void pathtraceInit(Scene* scene) {
 
 	cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_dn_image, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_dn_image, 0, pixelcount * sizeof(glm::vec3));
 
 	cudaMalloc(&dev_paths, pixelcount * sizeof(PathSegment));
 
@@ -160,6 +164,7 @@ void pathtraceFree() {
 	cudaFree(dev_geoms);
 	cudaFree(dev_materials);
 	cudaFree(dev_intersections);
+	cudaFree(dev_dn_image);
 	// TODO: clean up any extra device memory you created
 #if CACHE_FIRST_BOUNCE
 	cudaFree(dev_firstBounce);
@@ -972,7 +977,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 	// Shoot ray into scene, bounce between objects, push shading chunks
 
 	bool iterationComplete = false;
-	while (!iterationComplete && (!denoise_on || iter < 10)) {
+	while (!iterationComplete && (!denoise_on || iter < 5000)) {
 
 		// clean shading chunks
 		cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
@@ -1122,7 +1127,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 
 	auto pt_end = chrono::high_resolution_clock::now();
 	auto pt_duration = std::chrono::duration_cast<std::chrono::microseconds>(pt_end - pt_start);
-	if (iter == 9)
+	if (true)
 	{
 		std::cout << "PathTracing " << pt_duration.count() << std::endl;
 		std::cout << "Ray Generation: " << ray_time << std::endl;
@@ -1132,22 +1137,24 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		std::cout << "Shading: " << shading_time << std::endl;
 	}
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-	if (!denoise_on || iter < 10) {
+	if (!denoise_on || iter < 5000) {
 		// Assemble this iteration and apply it to the image
-		finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+		//finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
 		// Send results to OpenGL buffer for rendering
-		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
+		//sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
 		
-
-	else if (denoise_on && iter == 10) {
+	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+	if (denoise_on) {
 		auto dn_start = chrono::high_resolution_clock::now();
+		cudaMemcpy(dev_dn_image, dev_image,
+			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
 		std::cout << "Denoising" << std::endl;
 
 		// Denoise
 		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
 		auto dncnn_start = chrono::high_resolution_clock::now();
-		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
+		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_dn_image, dev_denoise, cam.resolution, iter);
 		auto dncnn_end = chrono::high_resolution_clock::now();
 		auto dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "PBO to model: " << dncnn_duration.count() << std::endl;
@@ -1157,8 +1164,8 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model Time: " << dncnn_duration.count() << std::endl;
 		dncnn_start = chrono::high_resolution_clock::now();
-		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_image, dev_denoise, cam.resolution, 9);
-		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_image);
+		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_dn_image, dev_denoise, cam.resolution, iter);
+		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_dn_image);
 		dncnn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model to PBO: " << dncnn_duration.count() << std::endl;
@@ -1169,7 +1176,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 
 	///////////////////////////////////////////////////////////////////////////
 	// Retrieve image from GPU
-	cudaMemcpy(hst_scene->state.image.data(), dev_image,
+	cudaMemcpy(hst_scene->state.image.data(), dev_dn_image,
 		pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
 
 	checkCUDAError("pathtrace");

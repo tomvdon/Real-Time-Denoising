@@ -146,11 +146,10 @@ void pathtraceInit(Scene* scene) {
 
 	cudaMalloc(&dev_bvh_nodes, scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU));
 	cudaMemcpy(dev_bvh_nodes, scene->bvh_nodes_gpu.data(), scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU), cudaMemcpyHostToDevice);
-
+	
 	// Denoise image buffer
 	cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
 	cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
-
 	checkCUDAError("pathtraceInit");
 }
 

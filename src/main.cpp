@@ -41,6 +41,9 @@ int height;
 static std::vector<tensor> filters;
 static std::vector<tensor> biases;
 
+bool ui_denoise = false;
+int ui_iterations = 1;
+
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 //	std::cout << "Running" << std::endl;

@@ -16,6 +16,7 @@ glm::vec3 multiplyMV(glm::mat4 m, glm::vec3 v) {
 }
 
 Scene::Scene(string filename) {
+    root_node = nullptr;
     cout << "Reading scene from " << filename << " ..." << endl;
     cout << " " << endl;
     char* fname = (char*)filename.c_str();
@@ -649,10 +650,12 @@ int Scene::loadObj(const char* fileName)
     geo.inverseTransform = glm::inverse(geo.transform);
     geo.invTranspose = glm::inverseTranspose(geo.transform);
 
+    
+
     //For each shape
-    for (const tinyobj::shape_t& shape : shapes) {
+    for (auto& shape : shapes) {
         // every tri in the mesh
-        for (int i = 0; i < shape.mesh.indices.size(); i += 3) {
+        for (size_t i = 0; i < shape.mesh.indices.size(); i += 3) {
             Tri newTri;
             glm::vec3 newP = glm::vec3(0.0f);
             glm::vec3 newN = glm::vec3(0.0f);
@@ -662,7 +665,7 @@ int Scene::loadObj(const char* fileName)
             newTri.inverseTransform = geo.inverseTransform;
             newTri.invTranspose = geo.invTranspose;
 
-            for (int k = 0; k < 3; ++k) {
+            for (size_t k = 0; k < 3; ++k) {
 
                 if (shape.mesh.indices[i + k].vertex_index != -1) {
                     newP = glm::vec3(attrib.vertices[3 * shape.mesh.indices[i + k].vertex_index + 0],
@@ -832,9 +835,6 @@ BVHNode* Scene::buildBVH(int start_index, int end_index) {
             return new_node;
         }
 
-        // partition triangles in bounding box, ones with centroids less than the midpoint go before ones with greater than
-        // using std::partition for partition algorithm
-        // https://en.cppreference.com/w/cpp/algorithm/partition
         TriBounds* pointer_to_partition_point = std::partition(&tri_bounds[start_index], &tri_bounds[end_index - 1] + 1,
             [dimension_to_split, centroid_midpoint](const TriBounds& triangle_AABB) {
                 return triangle_AABB.AABB_centroid[dimension_to_split] < centroid_midpoint;

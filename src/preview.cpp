@@ -221,6 +221,10 @@ void RenderImGui()
 	//ImGui::Text("counter = %d", counter);
 	ImGui::Text("Traced Depth %d", imguiData->TracedDepth);
 	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+	
+	ImGui::Checkbox("Denoise", &ui_denoise);
+	ImGui::SliderInt("Iterations", &ui_iterations, 1, 32);
+	
 	ImGui::End();
 
 

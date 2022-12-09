@@ -89,7 +89,7 @@ static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 
 //BVH
-static BVHNode_GPU* dev_bvh_nodes = NULL;
+static GPUBVHNode* dev_bvh_nodes = NULL;
 static Tri* dev_tris = NULL;
 
 // TODO: static variables for device memory, any extra info you need, etc
@@ -141,8 +141,8 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_tris, scene->num_tris * sizeof(Tri));
 	cudaMemcpy(dev_tris, scene->mesh_tris_sorted.data(), scene->num_tris * sizeof(Tri), cudaMemcpyHostToDevice);
 
-	cudaMalloc(&dev_bvh_nodes, scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU));
-	cudaMemcpy(dev_bvh_nodes, scene->bvh_nodes_gpu.data(), scene->bvh_nodes_gpu.size() * sizeof(BVHNode_GPU), cudaMemcpyHostToDevice);
+	cudaMalloc(&dev_bvh_nodes, scene->bvh_nodes_gpu.size() * sizeof(GPUBVHNode));
+	cudaMemcpy(dev_bvh_nodes, scene->bvh_nodes_gpu.data(), scene->bvh_nodes_gpu.size() * sizeof(GPUBVHNode), cudaMemcpyHostToDevice);
 
 
 
@@ -356,6 +356,7 @@ __global__ void computeIntersections(
 	}
 }
 
+//addapted from NicholasMoon
 __global__ void computeIntersections(
 	int depth
 	, int num_paths
@@ -365,7 +366,7 @@ __global__ void computeIntersections(
 	, Tri * tris
 	, int tris_size
 	, ShadeableIntersection * intersections
-	, BVHNode_GPU * bvh_nodes
+	, GPUBVHNode * bvh_nodes
 )
 {
 	int path_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -391,19 +392,20 @@ __global__ void computeIntersections(
 		glm::vec2 uv = glm::vec2(-1, -1);
 		float t_min = FLT_MAX;
 		int hit_geom_index = -1;
-
+		int matId = 1;
 		if (tris_size != 0)
 		{
 			int stack_pointer = 0;
 			int cur_node_index = 0;
 			int node_stack[128];
-			BVHNode_GPU cur_node;
+			GPUBVHNode cur_node;
 			glm::vec3 P;
 			glm::vec3 s;
 			float t1;
 			float t2;
 			float tmin;
 			float tmax;
+			
 			while (true)
 			{
 				cur_node = bvh_nodes[cur_node_index];
@@ -431,31 +433,22 @@ __global__ void computeIntersections(
 						//t = triangleIntersectionTest(tri, r, tmp_intersect, tmp_normal, tmp_uv, outside);
 
 
-						t = glm::dot(tri.plane_normal, (tri.p0 - r.origin)) / glm::dot(tri.plane_normal, r.direction);
+						t = glm::dot(tri.plane_normal, (tri.pos[0] - r.origin)) / glm::dot(tri.plane_normal, r.direction);
 						if (t >= -0.0001f) {
 							P = r.origin + t * r.direction;
 							// barycentric coords
-							s = glm::vec3(glm::length(glm::cross(P - tri.p1, P - tri.p2)),
-								glm::length(glm::cross(P - tri.p2, P - tri.p0)),
-								glm::length(glm::cross(P - tri.p0, P - tri.p1))) / tri.S;
+							s = glm::vec3(glm::length(glm::cross(P - tri.pos[1], P - tri.pos[2])),
+								glm::length(glm::cross(P - tri.pos[2], P - tri.pos[0])),
+								glm::length(glm::cross(P - tri.pos[0], P - tri.pos[1]))) / tri.S;
 
 							if (s.x >= -0.0001f && s.x <= 1.0001f && s.y >= -0.0001f && s.y <= 1.0001f &&
 								s.z >= -0.0001f && s.z <= 1.0001f && (s.x + s.y + s.z <= 1.0001f) && (s.x + s.y + s.z >= -0.0001f) && t_min > t) {
 								t_min = t;
-								hit_geom_index = 2;
-								normal = glm::normalize(s.x * tri.n0 + s.y * tri.n1 + s.z * tri.n2);
+								hit_geom_index = cur_node.tri_index;
+								normal = glm::normalize(s.x * tri.normal[0] + s.y * tri.normal[1] + s.z * tri.normal[2]);
+								matId = tri.mat_ID;
 							}
 						}
-
-
-						/*if (t > 0.0f && t_min > t)
-						{
-							t_min = t;
-							hit_geom_index = 0;
-							intersect_point = tmp_intersect;
-							normal = tmp_normal;
-							uv = tmp_uv;
-						}*/
 
 						// if last node in tree, we are done
 						if (stack_pointer == 0) {
@@ -506,8 +499,6 @@ __global__ void computeIntersections(
 				hit_geom_index = i;
 				intersect_point = tmp_intersect;
 				normal = tmp_normal;
-
-
 				uv = tmp_uv;
 			}
 
@@ -522,7 +513,7 @@ __global__ void computeIntersections(
 			//The ray hits something
 			intersections[path_index].t = t_min;
 			if (hit_geom_index >= geoms_size)
-				intersections[path_index].materialId = 1;
+				intersections[path_index].materialId = matId;
 			else
 				intersections[path_index].materialId = geoms[hit_geom_index].materialid;
 			intersections[path_index].surfaceNormal = normal;

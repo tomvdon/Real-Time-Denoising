@@ -52,7 +52,7 @@ Scene::Scene(string filename) {
     }
 
     if (mesh_tris.size() > 0) {
-        root_node = buildBVH(0, mesh_tris.size());
+        root_node = recursiveBuildBVH(0, mesh_tris.size());
 
         reformatBVHToGPU();
 
@@ -536,7 +536,7 @@ int Scene::loadMesh(const char* fileName)
             index_offset += fnum;
             //push all triangles into Obj_geoms
             Obj_geoms.push_back(triangle);
-            geo.bbox = Union(geo.bbox, AABB(triangle.pos[0], triangle.pos[1], triangle.pos[2]));
+            //geo.bbox = Union(geo.bbox, AABB(triangle.pos[0], triangle.pos[1], triangle.pos[2]));
         }
     }
 
@@ -652,33 +652,30 @@ int Scene::loadObj(const char* fileName)
     //For each shape
     for (const tinyobj::shape_t& shape : shapes) {
         // every tri in the mesh
-        for (int i = 0; i < shape.mesh.indices.size(); i += 3) {
-            Tri newTri;
-            glm::vec3 newP = glm::vec3(0.0f);
-            glm::vec3 newN = glm::vec3(0.0f);
-            glm::vec2 newT = glm::vec2(0.0f);
+        for (size_t i = 0; i < shape.mesh.indices.size(); i += 3) {
+            Tri tri;
+            tri.mat_ID = geo.materialid;
+            glm::vec3 pos = glm::vec3(0.0f);
+            glm::vec3 nor = glm::vec3(0.0f);
+            glm::vec2 uv  = glm::vec2(0.0f);
 
-            newTri.transform = geo.transform;
-            newTri.inverseTransform = geo.inverseTransform;
-            newTri.invTranspose = geo.invTranspose;
-
-            for (int k = 0; k < 3; ++k) {
+            for (size_t k = 0; k < 3; ++k) {
 
                 if (shape.mesh.indices[i + k].vertex_index != -1) {
-                    newP = glm::vec3(attrib.vertices[3 * shape.mesh.indices[i + k].vertex_index + 0],
+                    pos = glm::vec3(attrib.vertices[3 * shape.mesh.indices[i + k].vertex_index + 0],
                         attrib.vertices[3 * shape.mesh.indices[i + k].vertex_index + 1],
                         attrib.vertices[3 * shape.mesh.indices[i + k].vertex_index + 2]);
                 }
 
                 if (shape.mesh.indices[i + k].texcoord_index != -1) {
-                    newT = glm::vec2(
+                    uv = glm::vec2(
                         attrib.texcoords[2 * shape.mesh.indices[i + k].texcoord_index + 0],
                         1.0f - attrib.texcoords[2 * shape.mesh.indices[i + k].texcoord_index + 1]
                     );
                 }
 
                 if (shape.mesh.indices[i + k].normal_index != -1) {
-                    newN = glm::vec3(
+                    nor = glm::vec3(
                         attrib.normals[3 * shape.mesh.indices[i + k].normal_index + 0],
                         attrib.normals[3 * shape.mesh.indices[i + k].normal_index + 1],
                         attrib.normals[3 * shape.mesh.indices[i + k].normal_index + 2]
@@ -686,184 +683,115 @@ int Scene::loadObj(const char* fileName)
                 }
 
                 if (k == 0) {
-                    newTri.p0 = newP;
-                    newTri.n0 = newN;
-                    newTri.t0 = newT;
+                    tri.pos[0]      = pos;
+                    tri.normal[0]   = nor;
+                    tri.uv[0]       = uv;
                 }
                 else if (k == 1) {
-                    newTri.p1 = newP;
-                    newTri.n1 = newN;
-                    newTri.t1 = newT;
+                    tri.pos[1] = pos;
+                    tri.normal[1] = nor;
+                    tri.uv[1] = uv;
+
                 }
                 else {
-                    newTri.p2 = newP;
-                    newTri.n2 = newN;
-                    newTri.t2 = newT;
+                    tri.pos[2] = pos;
+                    tri.normal[2] = nor;
+                    tri.uv[2] = uv;
                 }
             }
 
-            newTri.p0 = multiplyMV(newTri.transform, newTri.p0);
-            newTri.p1 = multiplyMV(newTri.transform, newTri.p1);
-            newTri.p2 = multiplyMV(newTri.transform, newTri.p2);
-            newTri.n0 = glm::normalize(multiplyMV(newTri.invTranspose, newTri.n0));
-            newTri.n1 = glm::normalize(multiplyMV(newTri.invTranspose, newTri.n1));
-            newTri.n2 = glm::normalize(multiplyMV(newTri.invTranspose, newTri.n2));
+            tri.pos[0]      = multiplyMV(geo.transform, tri.pos[0]);
+            tri.pos[1]      = multiplyMV(geo.transform, tri.pos[1]);
+            tri.pos[2]      = multiplyMV(geo.transform, tri.pos[2]);
+            tri.normal[0]   = glm::normalize(multiplyMV(geo.invTranspose, tri.normal[0]));
+            tri.normal[1]   = glm::normalize(multiplyMV(geo.invTranspose, tri.normal[1]));
+            tri.normal[2]   = glm::normalize(multiplyMV(geo.invTranspose, tri.normal[2]));
 
-            newTri.plane_normal = glm::normalize(glm::cross(newTri.p1 - newTri.p0, newTri.p2 - newTri.p1));
-            newTri.S = glm::length(glm::cross(newTri.p1 - newTri.p0, newTri.p2 - newTri.p1));
-
-
-            TriBounds newTriBounds;
-
-            newTriBounds.tri_ID = num_tris;
+            tri.plane_normal = glm::normalize(glm::cross(tri.pos[1] - tri.pos[0], tri.pos[2] - tri.pos[1]));
+            tri.S = glm::length(glm::cross(tri.pos[1] - tri.pos[0], tri.pos[2] - tri.pos[1]));
 
 
-            float max_x = glm::max(glm::max(newTri.p0.x, newTri.p1.x), newTri.p2.x);
-            float max_y = glm::max(glm::max(newTri.p0.y, newTri.p1.y), newTri.p2.y);
-            float max_z = glm::max(glm::max(newTri.p0.z, newTri.p1.z), newTri.p2.z);
-            newTriBounds.AABB_max = glm::vec3(max_x, max_y, max_z);
+            Bound3s bounds;
+            bounds.tri_ID = num_tris;
+            bounds.bbox = AABB(tri.pos[0], tri.pos[1], tri.pos[2]);
 
-            float min_x = glm::min(glm::min(newTri.p0.x, newTri.p1.x), newTri.p2.x);
-            float min_y = glm::min(glm::min(newTri.p0.y, newTri.p1.y), newTri.p2.y);
-            float min_z = glm::min(glm::min(newTri.p0.z, newTri.p1.z), newTri.p2.z);
-            newTriBounds.AABB_min = glm::vec3(min_x, min_y, min_z);
-
-            float mid_x = (newTri.p0.x + newTri.p1.x + newTri.p2.x) / 3.0;
-            float mid_y = (newTri.p0.y + newTri.p1.y + newTri.p2.y) / 3.0;
-            float mid_z = (newTri.p0.z + newTri.p1.z + newTri.p2.z) / 3.0;
-            newTriBounds.AABB_centroid = glm::vec3(mid_x, mid_y, mid_z);
-
-            tri_bounds.push_back(newTriBounds);
-
-            mesh_tris.push_back(newTri);
+            tri_bounds.push_back(bounds);
+            mesh_tris.push_back(tri);
             num_tris++;
         }
     }
     return 1;
 }
 
-BVHNode* Scene::buildBVH(int start_index, int end_index) {
-    BVHNode* new_node = new BVHNode();
+
+//addapted from NicholasMoon and games101 homework by Lingqi Yan
+BVHBuildNode* Scene::recursiveBuildBVH(int start_index, int end_index) {
+    BVHBuildNode* new_node = new BVHBuildNode();
     num_nodes++;
     int num_tris_in_node = end_index - start_index;
 
-    // get the AABB bounds for this node (getting min and max of all triangles within)
-    glm::vec3 max_bounds = glm::vec3(-100000.0);
-    glm::vec3 min_bounds = glm::vec3(100000.0);
+    AABB bbox;
+    AABB centroid;
     for (int i = start_index; i < end_index; ++i) {
-        if (max_bounds.x < tri_bounds[i].AABB_max.x) {
-            max_bounds.x = tri_bounds[i].AABB_max.x;
-        }
-        if (max_bounds.y < tri_bounds[i].AABB_max.y) {
-            max_bounds.y = tri_bounds[i].AABB_max.y;
-        }
-        if (max_bounds.z < tri_bounds[i].AABB_max.z) {
-            max_bounds.z = tri_bounds[i].AABB_max.z;
-        }
-
-        if (min_bounds.x > tri_bounds[i].AABB_min.x) {
-            min_bounds.x = tri_bounds[i].AABB_min.x;
-        }
-        if (min_bounds.y > tri_bounds[i].AABB_min.y) {
-            min_bounds.y = tri_bounds[i].AABB_min.y;
-        }
-        if (min_bounds.z > tri_bounds[i].AABB_min.z) {
-            min_bounds.z = tri_bounds[i].AABB_min.z;
-        }
+        bbox.Union(tri_bounds[i].bbox);
+        centroid.Union(tri_bounds[i].bbox.pCentroid);
     }
 
     // leaf node (with 1 tri in it)
     if (num_tris_in_node <= 1) {
         mesh_tris_sorted.push_back(mesh_tris[tri_bounds[start_index].tri_ID]);
         new_node->tri_index = mesh_tris_sorted.size() - 1;
-        new_node->AABB_max = max_bounds;
-        new_node->AABB_min = min_bounds;
+        new_node->AABB_max = bbox.pMax;
+        new_node->AABB_min = bbox.pMin;
         return new_node;
     }
-    // intermediate node (covering tris start_index through end_index
     else {
-        // get the greatest length between tri centroids in each direction x, y, and z
-        glm::vec3 centroid_max = glm::vec3(-100000.0);
-        glm::vec3 centroid_min = glm::vec3(100000.0);
-        for (int i = start_index; i < end_index; ++i) {
-            if (centroid_max.x < tri_bounds[i].AABB_centroid.x) {
-                centroid_max.x = tri_bounds[i].AABB_centroid.x;
-            }
-            if (centroid_max.y < tri_bounds[i].AABB_centroid.y) {
-                centroid_max.y = tri_bounds[i].AABB_centroid.y;
-            }
-            if (centroid_max.z < tri_bounds[i].AABB_centroid.z) {
-                centroid_max.z = tri_bounds[i].AABB_centroid.z;
-            }
-
-            if (centroid_min.x > tri_bounds[i].AABB_centroid.x) {
-                centroid_min.x = tri_bounds[i].AABB_centroid.x;
-            }
-            if (centroid_min.y > tri_bounds[i].AABB_centroid.y) {
-                centroid_min.y = tri_bounds[i].AABB_centroid.y;
-            }
-            if (centroid_min.z > tri_bounds[i].AABB_centroid.z) {
-                centroid_min.z = tri_bounds[i].AABB_centroid.z;
-            }
-        }
-        glm::vec3 centroid_extent = centroid_max - centroid_min;
-
-        // choose dimension to split along (dimension with largest extent)
-        int dimension_to_split = 0;
-        if (centroid_extent.x >= centroid_extent.y && centroid_extent.x >= centroid_extent.z) {
-            dimension_to_split = 0;
-        }
-        else if (centroid_extent.y >= centroid_extent.x && centroid_extent.y >= centroid_extent.z) {
-            dimension_to_split = 1;
-        }
-        else {
-            dimension_to_split = 2;
-        }
-
-
+        int dim = centroid.maxExtent();
         int mid_point = (start_index + end_index) / 2;
-        float centroid_midpoint = (centroid_min[dimension_to_split] + centroid_max[dimension_to_split]) / 2;
+        float centroid_midpoint = (centroid.pMin[dim] + centroid.pMax[dim]) / 2;
 
-        if (centroid_min[dimension_to_split] == centroid_max[dimension_to_split]) {
+        if (centroid.pMin[dim] == centroid.pMax[dim]) {
             mesh_tris_sorted.push_back(mesh_tris[tri_bounds[start_index].tri_ID]);
             new_node->tri_index = mesh_tris_sorted.size() - 1;
-            new_node->AABB_max = max_bounds;
-            new_node->AABB_min = min_bounds;
+            new_node->AABB_max = bbox.pMax;
+            new_node->AABB_min = bbox.pMin;
             return new_node;
         }
 
         // partition triangles in bounding box, ones with centroids less than the midpoint go before ones with greater than
         // using std::partition for partition algorithm
         // https://en.cppreference.com/w/cpp/algorithm/partition
-        TriBounds* pointer_to_partition_point = std::partition(&tri_bounds[start_index], &tri_bounds[end_index - 1] + 1,
-            [dimension_to_split, centroid_midpoint](const TriBounds& triangle_AABB) {
-                return triangle_AABB.AABB_centroid[dimension_to_split] < centroid_midpoint;
+        Bound3s* pointer_to_partition_point = std::partition(&tri_bounds[start_index], &tri_bounds[end_index - 1] + 1,
+            [dim, centroid_midpoint](const Bound3s& triangle_AABB) {
+                return triangle_AABB.bbox.pCentroid[dim] < centroid_midpoint;
             });
 
         // get the pointer relative to the start of the array
         mid_point = pointer_to_partition_point - &tri_bounds[0];
 
         // create two children nodes each for one side of the partitioned node
-        new_node->child_nodes[0] = buildBVH(start_index, mid_point);
-        new_node->child_nodes[1] = buildBVH(mid_point, end_index);
+        new_node->left = recursiveBuildBVH(start_index, mid_point);
+        new_node->right = recursiveBuildBVH(mid_point, end_index);
 
-        new_node->split_axis = dimension_to_split;
+        new_node->split_axis = dim;
         new_node->tri_index = -1;
 
-        new_node->AABB_max.x = glm::max(new_node->child_nodes[0]->AABB_max.x, new_node->child_nodes[1]->AABB_max.x);
-        new_node->AABB_max.y = glm::max(new_node->child_nodes[0]->AABB_max.y, new_node->child_nodes[1]->AABB_max.y);
-        new_node->AABB_max.z = glm::max(new_node->child_nodes[0]->AABB_max.z, new_node->child_nodes[1]->AABB_max.z);
+        new_node->AABB_max.x = glm::max(new_node->left->AABB_max.x, new_node->right->AABB_max.x);
+        new_node->AABB_max.y = glm::max(new_node->left->AABB_max.y, new_node->right->AABB_max.y);
+        new_node->AABB_max.z = glm::max(new_node->left->AABB_max.z, new_node->right->AABB_max.z);
 
-        new_node->AABB_min.x = glm::min(new_node->child_nodes[0]->AABB_min.x, new_node->child_nodes[1]->AABB_min.x);
-        new_node->AABB_min.y = glm::min(new_node->child_nodes[0]->AABB_min.y, new_node->child_nodes[1]->AABB_min.y);
-        new_node->AABB_min.z = glm::min(new_node->child_nodes[0]->AABB_min.z, new_node->child_nodes[1]->AABB_min.z);
+        new_node->AABB_min.x = glm::min(new_node->left->AABB_min.x, new_node->right->AABB_min.x);
+        new_node->AABB_min.y = glm::min(new_node->left->AABB_min.y, new_node->right->AABB_min.y);
+        new_node->AABB_min.z = glm::min(new_node->left->AABB_min.z, new_node->right->AABB_min.z);
+
         return new_node;
     }
 }
 
+//addapted from NicholasMoon
 void Scene::reformatBVHToGPU() {
-    BVHNode* cur_node;
-    std::stack<BVHNode*> nodes_to_process;
+    BVHBuildNode* cur_node;
+    std::stack<BVHBuildNode*> nodes_to_process;
     std::stack<int> index_to_parent;
     std::stack<bool> second_child_query;
     int cur_node_index = 0;
@@ -873,7 +801,7 @@ void Scene::reformatBVHToGPU() {
     index_to_parent.push(-1);
     second_child_query.push(false);
     while (!nodes_to_process.empty()) {
-        BVHNode_GPU new_gpu_node;
+        GPUBVHNode GPUNode;
 
         cur_node = nodes_to_process.top();
         nodes_to_process.pop();
@@ -885,23 +813,23 @@ void Scene::reformatBVHToGPU() {
         if (is_second_child && parent_index != -1) {
             bvh_nodes_gpu[parent_index].offset_to_second_child = bvh_nodes_gpu.size();
         }
-        new_gpu_node.AABB_min = cur_node->AABB_min;
-        new_gpu_node.AABB_max = cur_node->AABB_max;
+        GPUNode.AABB_min = cur_node->AABB_min;
+        GPUNode.AABB_max = cur_node->AABB_max;
         if (cur_node->tri_index != -1) {
             // leaf node
-            new_gpu_node.tri_index = cur_node->tri_index;
+            GPUNode.tri_index = cur_node->tri_index;
         }
         else {
             // intermediate node
-            new_gpu_node.axis = cur_node->split_axis;
-            new_gpu_node.tri_index = -1;
-            nodes_to_process.push(cur_node->child_nodes[1]);
+            GPUNode.axis = cur_node->split_axis;
+            GPUNode.tri_index = -1;
+            nodes_to_process.push(cur_node->right);
             index_to_parent.push(bvh_nodes_gpu.size());
             second_child_query.push(true);
-            nodes_to_process.push(cur_node->child_nodes[0]);
+            nodes_to_process.push(cur_node->left);
             index_to_parent.push(-1);
             second_child_query.push(false);
         }
-        bvh_nodes_gpu.push_back(new_gpu_node);
+        bvh_nodes_gpu.push_back(GPUNode);
     }
 }

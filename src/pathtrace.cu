@@ -19,14 +19,15 @@
 #include <filesystem>
 
 #include <boost/serialization/base_object.hpp>
-#include <boost/serialization/vector.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/serialization/serialization.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/archive/xml_oarchive.hpp>
 
 #define DIRECT 0
 #define CACHE_FIRST_BOUNCE 0
-#define SORT_MATERIAL 1
+#define SORT_MATERIAL 0 
 #define COMPACTION 1
 #define DEPTH_OF_FIELD 0
 #define ANTI_ALIASING 0
@@ -146,7 +147,7 @@ void pathtraceInit(Scene* scene) {
 
 	const Camera& cam = hst_scene->state.camera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
-
+	std::cout << pixelcount << std::endl;
 	cudaMalloc(&dev_image, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_image, 0, pixelcount * sizeof(glm::vec3));
 
@@ -243,19 +244,18 @@ int saveGBuffer()
 {
 	const Camera& cam = hst_scene->state.camera;
 	const int pixelcount = cam.resolution.x * cam.resolution.y;
-
+	std::cout << "PIX: " << pixelcount << std::endl;
 	//std::vector<GBufferPixel> h_gBuffer;
 	cudaMemcpy(h_gBuffer, dev_gBuffer, pixelcount * sizeof(GBufferPixel), cudaMemcpyDeviceToHost);
+	std::vector<GBufferPixel> g_vec(h_gBuffer, h_gBuffer + pixelcount);
 	{
 
 		std::string filename = std::string("../training_data/" + hst_scene->state.imageName + "/" + std::to_string(hst_scene->state.sceneAngle) + "/" + hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
 		std::cout << filename << std::endl;
 		std::ofstream ofs("../training_data/" + hst_scene->state.imageName + "/" + std::to_string(hst_scene->state.sceneAngle) + "/" + hst_scene->state.imageName + ".angle_" + std::to_string(hst_scene->state.sceneAngle) + "GBUFFER");
-		boost::archive::text_oarchive oa(ofs);
-		for (int i = 0; i < pixelcount; i++)
-		{
-			oa << h_gBuffer[i];
-		}
+		unsigned int flags = boost::archive::no_header;
+		boost::archive::xml_oarchive oa(ofs, flags);
+		oa& BOOST_SERIALIZATION_NVP(g_vec);
 	}
 	
 

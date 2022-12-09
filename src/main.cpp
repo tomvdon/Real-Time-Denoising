@@ -8,6 +8,9 @@
 #include <cudnn.h>
 #include "opencv2\opencv.hpp"
 #include <filesystem>
+#include <boost/config.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/archive/xml_oarchive.hpp>
 
 #define GEN_DATA 1
 
@@ -290,10 +293,29 @@ void tryCUDNN() {
 //	std::cout << "Success!" << std::endl;
 //}
 
+void test_gbuffer()
+{
+	std::ifstream ifs("cornell.gbuffer");
+	boost::archive::text_iarchive ia(ifs);
+	std::ofstream ofs("vector_cornell.gbuffer");
+	unsigned int flags = boost::archive::no_header;
+	boost::archive::xml_oarchive oa(ofs, flags);
+	std::vector<GBufferPixel> vec;
+	for (int i = 0; i < 640000; i++)
+	{
+		GBufferPixel pix;
+		ia >> pix;
+		vec.push_back(pix);
+		//oa << BOOST_SERIALIZATION_NVP(pix);
+		//std::cout << i << std::endl;
+	}
+	oa& BOOST_SERIALIZATION_NVP(vec);
+	exit(1);
+}
 
 int main(int argc, char** argv) {
 	startTimeString = currentTimeString();
-
+	//test_gbuffer();
 	if (argc < 2) {
 		printf("Usage: %s SCENEFILE.txt\n", argv[0]);
 		return 1;

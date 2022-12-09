@@ -604,7 +604,7 @@ int Scene::loadObj(const char* fileName)
     std::string warn;
     std::string err;
 
-    char* material_dir = "../scenes";
+    char material_dir[] = "../scenes";
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &m_materials, &warn, &err, fileName, material_dir,
         NULL, true);
     if (!warn.empty())

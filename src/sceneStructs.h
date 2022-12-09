@@ -191,23 +191,23 @@ private:
     template<class Archive>
     void serialize(Archive& ar, const unsigned int version)
     {
-        //ar& boost::serialization::make_nvp("t", t);
-        //ar& boost::serialization::make_nvp("n_x", normal.x);
-        //ar& boost::serialization::make_nvp("n_y", normal.y);
-        //ar& boost::serialization::make_nvp("n_z", normal.z);
-        //ar& boost::serialization::make_nvp("p_x", position.x);
-        //ar& boost::serialization::make_nvp("p_y", position.y);
-        //ar& boost::serialization::make_nvp("p_z", position.z);
-        ar& t;
-        ar& normal.x;
-        ar& normal.y;
-        ar& normal.z;
-        ar& position.x;
-        ar& position.y;
-        ar& position.z;
+
+            ar& boost::serialization::make_nvp("t", t);
+            ar& boost::serialization::make_nvp("n_x", normal.x);
+            ar& boost::serialization::make_nvp("n_y", normal.y);
+            ar& boost::serialization::make_nvp("n_z", normal.z);
+            ar& boost::serialization::make_nvp("p_x", position.x);
+            ar& boost::serialization::make_nvp("p_y", position.y);
+            ar& boost::serialization::make_nvp("p_z", position.z);
+            //ar& t;
+            //ar& normal.x;
+            //ar& normal.y;
+            //ar& normal.z;
+            //ar& position.x;
+            //ar& position.y;
+            //ar& position.z;
 
     }
-};
 };
 
 

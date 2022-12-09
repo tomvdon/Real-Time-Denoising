@@ -7,7 +7,6 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
-#include <thrust/random.h>
 
 using namespace std;
 
@@ -19,13 +18,10 @@ private:
     int loadCamera();
     int loadObj(const char* fileName);
     int loadMesh(const char* fileName);
-    glm::vec3 loadTexture(Geom &geo, const char* fileName);
-    int loadTestScene();
+    glm::vec3 loadTexture(Geom& geo, const char* fileName);
 public:
     Scene(string filename);
     ~Scene();
-    BVHBuildNode* recursiveBuild(std::vector<Triangle*> mesh_triangles);
-    void toGPU();
 
     std::vector<Geom> geoms;
     std::vector<Material> materials;
@@ -37,10 +33,17 @@ public:
     RenderState state;
 
     std::vector<Geom> Obj_geoms;
-    std::vector<Bounds3> tri_bounds;
-    std::vector<Triangle> mesh_tris;
-    std::vector<Triangle*> mesh_tris_ptr;
-    std::vector<BVHGPUNode> gpu_array;
 
-    BVHBuildNode* root;
+    BVHBuildNode* recursiveBuildBVH(int start_index, int end_index);
+    void reformatBVHToGPU();
+
+    int num_tris = 0;
+    int num_geoms = 0;
+    std::vector<Tri> mesh_tris;
+    std::vector<Tri> mesh_tris_sorted;
+    BVHBuildNode* root_node;
+    int num_nodes = 0;
+    std::vector<GPUBVHNode> bvh_nodes_gpu;
+    std::vector<Bound3s> tri_bounds;
+
 };

@@ -302,103 +302,104 @@ void generateStrides(vector<int64_t>& dimA, vector<int64_t>& strideA, int nbDims
 	}
 }
 
-void createFusionTensorDescriptor(cudnnBackendDescriptor_t& desc, int n, int c, int h, int w, uint64_t id, bool vir) {
-	std::vector<int64_t> dims = { n, c, h, w }; // NHWC
-	std::cout << dims[0] << ", " << dims[1] << ", " << dims[2] << ", " << dims[3] << std::endl;
-	std::vector<int64_t> strides = { n, c, h, w };
-	generateStrides(dims, strides, 4, CUDNN_TENSOR_NHWC);
-	int64_t alignment = 16; //256?
-	cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+void createFusionTensorDescriptor(fusionTensor tensor) {
+	std::cout << "Creating tensor with dims: ";
+	for (int64_t yo : tensor.dims) {
+		std::cout << yo << ", ";
+	}
+	std::cout << std::endl;
+	//std::vector<int64_t> dims = { n, c, h, w }; // NHWC
+	//std::cout << dims[0] << ", " << dims[1] << ", " << dims[2] << ", " << dims[3] << std::endl;
+	//std::vector<int64_t> strides = { c*h*w, h*w, w, 1 };
+	//generateStrides(dims, strides, 4, CUDNN_TENSOR_NHWC);
+	//int64_t alignment = 4; //256?
+	//cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
 	
-	checkCUDNN(cudnnBackendCreateDescriptor(CUDNN_BACKEND_TENSOR_DESCRIPTOR, &desc));
-
+	checkCUDNN(cudnnBackendCreateDescriptor(CUDNN_BACKEND_TENSOR_DESCRIPTOR, &tensor.desc));
 	checkCUDNN(
-		cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_DATA_TYPE,
-			CUDNN_TYPE_DATA_TYPE, 1, &dtype)
+		cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_DATA_TYPE,
+			CUDNN_TYPE_DATA_TYPE, 1, &tensor.dtype)
 	);
 	checkCUDNN(
-		cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_DIMENSIONS,
-			CUDNN_TYPE_INT64, 4, dims.data())
+		cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_DIMENSIONS,
+			CUDNN_TYPE_INT64, tensor.dims.size(), tensor.dims.data())
 	);
 	checkCUDNN(
-		cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_STRIDES,
-			CUDNN_TYPE_INT64, 4, strides.data())
+		cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_STRIDES,
+			CUDNN_TYPE_INT64, tensor.strides.size(), tensor.strides.data())
 	);
 	checkCUDNN(
-		cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_UNIQUE_ID,
-			CUDNN_TYPE_INT64, 1, &id)
+		cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_UNIQUE_ID,
+			CUDNN_TYPE_INT64, 1, &tensor.id)
 	);
 	checkCUDNN(
-		cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_BYTE_ALIGNMENT,
-			CUDNN_TYPE_INT64, 1, &alignment)
+		cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_BYTE_ALIGNMENT,
+			CUDNN_TYPE_INT64, 1, &tensor.alignment)
 	);
-
-	if (vir) {
-		bool yes = true;
+	if (tensor.vir) {
 		checkCUDNN(
-			cudnnBackendSetAttribute(desc, CUDNN_ATTR_TENSOR_IS_VIRTUAL,
-				CUDNN_TYPE_BOOLEAN, 1, &yes)
+			cudnnBackendSetAttribute(tensor.desc, CUDNN_ATTR_TENSOR_IS_VIRTUAL,
+				CUDNN_TYPE_BOOLEAN, 1, &tensor.vir)
 		);
 	}
-
-	checkCUDNN(cudnnBackendFinalize(desc));
+	checkCUDNN(cudnnBackendFinalize(tensor.desc));
 }
 
 void createFusionConvDescriptor(fusionConv conv) {
 	// TODO maybe make this more generalizable for diff networks
-	int64_t dims = 2;
-	cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
-	cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-	int64_t pad[] = { 1, 1 };
-	int64_t stride[] = { 1, 1 };
-	int64_t dilation[] = { 1, 1 };
+	//int64_t dims = 2;
+	//cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
+	//cudnnConvolutionMode_t mode = CUDNN_CONVOLUTION;
+	//int64_t pad[] = { 1, 1 };
+	//int64_t stride[] = { 1, 1 };
+	//int64_t dilation[] = { 1, 1 };
 
 	checkCUDNN(cudnnBackendCreateDescriptor(CUDNN_BACKEND_CONVOLUTION_DESCRIPTOR, &conv.conv_desc));
 
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_SPATIAL_DIMS,
-			CUDNN_TYPE_INT64, 1, &dims)
+			CUDNN_TYPE_INT64, 1, &conv.dims)
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_COMP_TYPE,
-			CUDNN_TYPE_DATA_TYPE, 1, &dtype)
+			CUDNN_TYPE_DATA_TYPE, 1, &conv.dtype)
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_CONV_MODE,
-			CUDNN_TYPE_CONVOLUTION_MODE, 1, &mode)
+			CUDNN_TYPE_CONVOLUTION_MODE, 1, &conv.conv_mode)
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_PRE_PADDINGS,
-			CUDNN_TYPE_INT64, dims, pad)
+			CUDNN_TYPE_INT64, conv.dims, conv.pad.data())
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_POST_PADDINGS,
-			CUDNN_TYPE_INT64, dims, pad)
+			CUDNN_TYPE_INT64, conv.dims, conv.pad.data())
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_DILATIONS,
-			CUDNN_TYPE_INT64, dims, dilation)
+			CUDNN_TYPE_INT64, conv.dims, conv.dilation.data())
 	);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_desc, CUDNN_ATTR_CONVOLUTION_FILTER_STRIDES,
-			CUDNN_TYPE_INT64, dims, stride)
+			CUDNN_TYPE_INT64, conv.dims, conv.stride.data())
 	);
 	checkCUDNN(cudnnBackendFinalize(conv.conv_desc));
 }
 
 void createFusionConvOp(fusionConv conv) {
-	float alpha = 1.0;
-	float beta = 0.0;
-	int64_t dims = 2;
+	//float alpha = 1.0;
+	//float beta = 0.0;
+	//int64_t dims = 2;
 
 	checkCUDNN(
 		cudnnBackendCreateDescriptor(CUDNN_BACKEND_OPERATION_CONVOLUTION_FORWARD_DESCRIPTOR,
 			&conv.conv_op)
 	);
-	checkCUDNN(
-		cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_CONVOLUTION_SPATIAL_DIMS,
-			CUDNN_TYPE_INT64, 1, &dims)
-	);
+	//checkCUDNN(
+	//	cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_CONVOLUTION_SPATIAL_DIMS,
+	//		CUDNN_TYPE_INT64, 1, &dims)
+	//);
 	checkCUDNN(
 		cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_X,
 			CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &conv.in.desc)
@@ -415,14 +416,14 @@ void createFusionConvOp(fusionConv conv) {
 		cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_CONV_DESC,
 			CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &conv.conv_desc)
 	);
-	checkCUDNN(
-		cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_ALPHA,
-			CUDNN_TYPE_FLOAT, 1, &alpha)
-	);
-	checkCUDNN(
-		cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_BETA,
-			CUDNN_TYPE_FLOAT, 1, &beta)
-	);
+	//checkCUDNN(
+	//	cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_ALPHA,
+	//		CUDNN_TYPE_FLOAT, 1, &alpha)
+	//);
+	//checkCUDNN(
+	//	cudnnBackendSetAttribute(conv.conv_op, CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_BETA,
+	//		CUDNN_TYPE_FLOAT, 1, &beta)
+	//);
 
 	checkCUDNN(cudnnBackendFinalize(conv.conv_op));
 }
@@ -472,7 +473,164 @@ void createFusionBiasOp(cudnnBackendDescriptor_t& desc, cudnnBackendDescriptor_t
 	}
 	checkCUDNN(cudnnBackendFinalize(desc));
 }
+/*
+void test() {
+	//===--------   Initialize problem configurations                  ----===//
+	const int64_t batch_size = 1;
+	const int64_t src_feature_h = 227;
+	const int64_t src_feature_w = 227;
+	const int64_t src_channels = 3;
 
+	const int64_t filter_h = 3;
+	const int64_t filter_w = 3;
+	const int64_t stride = 1;
+	const int64_t padding = 1;
+	const int64_t dilation = 1;
+	const int64_t groups = 1;
+
+	const int64_t dst_channels = 64;
+	const int64_t dst_feature_h = 227;
+	const int64_t dst_feature_w = 227;
+
+	const int64_t alignment = 4; // default alignment for float values
+
+	//===--------   Create tensors in the CBR graph problem            ----===//
+
+	//// create convolution src tensor
+	//cudnnBackendDescriptor_t tensor_conv_src;
+	//createFusionTensorDescriptor(tensor_conv_src, 1, 3, src_feature_h, src_feature_w, 'x', false);
+
+	//// create convolution weight tensor
+	//cudnnBackendDescriptor_t tensor_conv_wei;
+	//createFusionTensorDescriptor(tensor_conv_wei, 64, 3, 3, 3, 'w', false);
+
+	//// create convolution dst tensor
+	//cudnnBackendDescriptor_t tensor_conv_dst;
+	//createFusionTensorDescriptor(tensor_conv_dst, 1, 64, src_feature_h, src_feature_w, 'y', true);
+
+	// create biasadd bias tensor
+	//cudnnBackendDescriptor_t tensor_biasadd_bias;
+	//checkCUDNN(cudnnBackendCreateDescriptor(
+	//	CUDNN_BACKEND_TENSOR_DESCRIPTOR, &tensor_biasadd_bias));
+	//cudnnDataType_t biasadd_bias_dtype = CUDNN_DATA_FLOAT;
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_bias,
+	//	CUDNN_ATTR_TENSOR_DATA_TYPE, CUDNN_TYPE_DATA_TYPE, 1,
+	//	&biasadd_bias_dtype));
+	//int64_t biasadd_bias_dims[] = { 1, dst_channels, 1, 1 };
+	//int64_t biasadd_bias_strides[] = { dst_channels, 1, 1, 1 };
+	//int64_t biasadd_bias_uid = 3;
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_bias,
+	//	CUDNN_ATTR_TENSOR_DIMENSIONS, CUDNN_TYPE_INT64, 4,
+	//	biasadd_bias_dims));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_bias,
+	//	CUDNN_ATTR_TENSOR_STRIDES, CUDNN_TYPE_INT64, 4,
+	//	biasadd_bias_strides));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_bias,
+	//	CUDNN_ATTR_TENSOR_UNIQUE_ID, CUDNN_TYPE_INT64, 1,
+	//	&biasadd_bias_uid));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_bias,
+	//	CUDNN_ATTR_TENSOR_BYTE_ALIGNMENT, CUDNN_TYPE_INT64, 1, &alignment));
+	//checkCUDNN(cudnnBackendFinalize(tensor_biasadd_bias));
+
+	// create biasadd dst tensor
+	//cudnnBackendDescriptor_t tensor_biasadd_dst;
+	//checkCUDNN(cudnnBackendCreateDescriptor(
+	//	CUDNN_BACKEND_TENSOR_DESCRIPTOR, &tensor_biasadd_dst));
+	//cudnnDataType_t biasadd_dst_dtype = CUDNN_DATA_FLOAT;
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_DATA_TYPE, CUDNN_TYPE_DATA_TYPE, 1,
+	//	&biasadd_dst_dtype));
+	//int64_t biasadd_dst_uid = 4;
+	//bool biasadd_dst_is_virtual = true; // biasadd dst can be a virtual tensor
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_DIMENSIONS, CUDNN_TYPE_INT64, 4, conv_dst_dims));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_STRIDES, CUDNN_TYPE_INT64, 4, conv_dst_strides));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_UNIQUE_ID, CUDNN_TYPE_INT64, 1,
+	//	&biasadd_dst_uid));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_BYTE_ALIGNMENT, CUDNN_TYPE_INT64, 1, &alignment));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_biasadd_dst,
+	//	CUDNN_ATTR_TENSOR_IS_VIRTUAL, CUDNN_TYPE_BOOLEAN, 1,
+	//	&conv_dst_is_virtual));
+	//checkCUDNN(cudnnBackendFinalize(tensor_biasadd_dst));
+
+	// create relu dst tensor
+	//cudnnBackendDescriptor_t tensor_relu_dst;
+	//checkCUDNN(cudnnBackendCreateDescriptor(
+	//	CUDNN_BACKEND_TENSOR_DESCRIPTOR, &tensor_relu_dst));
+	//cudnnDataType_t relu_dst_dtype = CUDNN_DATA_FLOAT;
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_relu_dst,
+	//	CUDNN_ATTR_TENSOR_DATA_TYPE, CUDNN_TYPE_DATA_TYPE, 1,
+	//	&relu_dst_dtype));
+	//int64_t relu_dst_uid = 5;
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_relu_dst,
+	//	CUDNN_ATTR_TENSOR_DIMENSIONS, CUDNN_TYPE_INT64, 4, conv_dst_dims));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_relu_dst,
+	//	CUDNN_ATTR_TENSOR_STRIDES, CUDNN_TYPE_INT64, 4, conv_dst_strides));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_relu_dst,
+	//	CUDNN_ATTR_TENSOR_UNIQUE_ID, CUDNN_TYPE_INT64, 1, &relu_dst_uid));
+	//checkCUDNN(cudnnBackendSetAttribute(tensor_relu_dst,
+	//	CUDNN_ATTR_TENSOR_BYTE_ALIGNMENT, CUDNN_TYPE_INT64, 1, &alignment));
+	//checkCUDNN(cudnnBackendFinalize(tensor_relu_dst));
+
+	//===--------   Create operations in the CBR graph problem         ----===//
+
+	// create the convolution operation descriptor
+	cudnnBackendDescriptor_t conv_fwd_desc;
+	int64_t spatial_ndims = 2;
+	cudnnDataType_t compute_type = CUDNN_DATA_FLOAT;
+	cudnnConvolutionMode_t mode = CUDNN_CONVOLUTION;
+	int64_t pad[] = { padding, padding };
+	int64_t stri[] = { stride, stride };
+	int64_t dila[] = { dilation, dilation };
+
+	checkCUDNN(cudnnBackendCreateDescriptor(
+		CUDNN_BACKEND_CONVOLUTION_DESCRIPTOR, &conv_fwd_desc));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_SPATIAL_DIMS, CUDNN_TYPE_INT64, 1,
+		&spatial_ndims));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_COMP_TYPE, CUDNN_TYPE_DATA_TYPE, 1,
+		&compute_type));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_CONV_MODE, CUDNN_TYPE_CONVOLUTION_MODE, 1,
+		&mode));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_PRE_PADDINGS, CUDNN_TYPE_INT64,
+		spatial_ndims, pad));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_POST_PADDINGS, CUDNN_TYPE_INT64,
+		spatial_ndims, pad));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_DILATIONS, CUDNN_TYPE_INT64, spatial_ndims,
+		dila));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_desc,
+		CUDNN_ATTR_CONVOLUTION_FILTER_STRIDES, CUDNN_TYPE_INT64,
+		spatial_ndims, stri));
+	checkCUDNN(cudnnBackendFinalize(conv_fwd_desc));
+
+	// create the convolution operation
+	cudnnBackendDescriptor_t conv_fwd_op;
+	checkCUDNN(cudnnBackendCreateDescriptor(
+		CUDNN_BACKEND_OPERATION_CONVOLUTION_FORWARD_DESCRIPTOR,
+		&conv_fwd_op));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_op,
+		CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_X,
+		CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &tensor_conv_src));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_op,
+		CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_W,
+		CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &tensor_conv_wei));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_op,
+		CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_Y,
+		CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &tensor_conv_dst));
+	checkCUDNN(cudnnBackendSetAttribute(conv_fwd_op,
+		CUDNN_ATTR_OPERATION_CONVOLUTION_FORWARD_CONV_DESC,
+		CUDNN_TYPE_BACKEND_DESCRIPTOR, 1, &conv_fwd_desc));
+	checkCUDNN(cudnnBackendFinalize(conv_fwd_op));
+}
+*/
 void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path) {
 	for (int i = 0; i < 20; ++i) {
 		// Load filter
@@ -509,17 +667,6 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 		readBias(out_chan, l.bias, bias_path);
 		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NHWC, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
 
-		//Define input out descriptors
-		// TODO probably need a better way to do this if the stride/padding make it so that resolution changes
-		// Would probably involve using:
-			// Calc and define output dimensions
-			//int out_n, out_c, out_h, out_w;
-			//checkCUDNN(cudnnGetConvolution2dForwardOutputDim(
-			//	convolution_descriptor,
-			//	input_descriptor,
-			//	kernel_descriptor,
-			//	&out_n, &out_c, &out_h, &out_w));
-
 		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NHWC, 1, in_chan, height, width);
 		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NHWC, 1, out_chan, height, width);
 
@@ -547,36 +694,6 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 				/*ReturnedNumAlgs*/&num_algs,
 				&l.conv_alg));
 		
-		//l.conv_alg = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
-		// TODO maybe add workspace loading ?
-		std::cout << "LAYER " << i+1 << " USING CONV ALG " << l.conv_alg.algo << std::endl;
-
-		fusionConv conv;
-		std::cout << "in" << std::endl;
-		createFusionTensorDescriptor(conv.in.desc, 1, in_chan, height, width, 'x', false);
-
-		std::cout << "out" << std::endl;
-		//temp0
-		createFusionTensorDescriptor(conv.out.desc, 1, out_chan, height, width, 'y', true);
-		std::cout << "w" << std::endl;
-		// Filter should be out_chan, in_chan, h, w (note function takes in params in nchw order but writes in nhwc)
-		// so correct order is n=out_chan, h=in_chan, w=h, c=w -> fun(out_chan, w, in_chan, h)
-		createFusionTensorDescriptor(conv.filter.desc, out_chan, 3, in_chan, 3, 'w', false);
-
-		createFusionTensorDescriptor(conv.bias.desc, 1, out_chan, 1, 1, 'bias', false);
-
-		fusionTensor fusion_temp1;
-		createFusionTensorDescriptor(fusion_temp1.desc, 1, out_chan, height, width, 'bias', true);
-
-		createFusionConvDescriptor(conv);
-
-		createFusionConvOp(conv);
-
-		//cudnnBackendDescriptor_t bias_desc;
-		//createFusionBiasDescriptor(bias_desc, false);
-		//cudnnBackendDescriptor_t bias_op_desc;
-		//createFusionBiasOp(bias_op_desc, conv.out.desc, conv.bias.desc, fusion_temp1.desc, bias_desc, false);
-
 		model.push_back(l);
 	}
 }

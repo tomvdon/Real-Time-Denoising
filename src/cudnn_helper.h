@@ -48,24 +48,29 @@ struct layer {
 struct fusionTensor {
 	cudnnBackendDescriptor_t desc;
 	cudnnDataType_t dtype;
-	int64_t* dim;
-	int64_t* stride;
+	std::vector<int64_t> dims;
+	std::vector<int64_t> strides;
 	int64_t id;
 	int64_t alignment;
+	bool vir;
+	fusionTensor(int64_t name, bool is_vir) :
+		id(name), vir(is_vir), alignment(4), dtype(CUDNN_DATA_FLOAT) {}
 };
 struct fusionConv {
 	cudnnBackendDescriptor_t conv_desc;
 	cudnnBackendDescriptor_t conv_op;
-	fusionTensor in;
-	fusionTensor out;
-	fusionTensor bias;
-	fusionTensor filter;
+	fusionTensor in = fusionTensor('x', false);
+	fusionTensor out = fusionTensor('y', true);
+	fusionTensor bias = fusionTensor('b', false);
+	fusionTensor filter = fusionTensor('w', false);
 	cudnnDataType_t dtype;
-	cudnnConvolutionMode_t convMode;
+	cudnnConvolutionMode_t conv_mode;
 	int64_t dims;
-	int64_t* pad;
-	int64_t* stride;
-	int64_t* dilation;
+	std::vector<int64_t> pad;
+	std::vector<int64_t> stride;
+	std::vector<int64_t> dilation;
+	fusionConv() :
+		conv_mode(CUDNN_CONVOLUTION), dtype(CUDNN_DATA_FLOAT) {}
 };
 struct fusionLayer {
 	fusionTensor input;
@@ -84,7 +89,7 @@ void addBias(cudnnHandle_t handle, layer& l, tensor& bias, bool subtract);
 void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_format, cudnnTensorFormat_t out_format);
 void logTensor(tensor& t, std::string out_path, std::string name);
 void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path);
-void createFusionTensorDescriptor(cudnnBackendDescriptor_t& desc, int n, int c, int h, int w, uint64_t id, bool vir);
+void createFusionTensorDescriptor(fusionTensor tensor);
 void createFusionConvDescriptor(fusionConv conv);
 void createFusionConvOp(fusionConv conv);
 void createFusionBiasDescriptor(cudnnBackendDescriptor_t& desc, bool subtract);

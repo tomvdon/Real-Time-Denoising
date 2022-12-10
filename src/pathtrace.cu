@@ -766,13 +766,13 @@ __global__ void vecToBuff(int numPixels, glm::vec3* image, float* denoise, glm::
 		// Each thread writes one pixel location in the texture (textel)
 		int buff_idx = index * 3;
 		//NCHW
-		//denoise[index] = color.x;
-		//denoise[index + numPixels] = color.y;
-		//denoise[index + 2 * numPixels] = color.z;
+		denoise[index] = color.x;
+		denoise[index + numPixels] = color.y;
+		denoise[index + 2 * numPixels] = color.z;
 		//NHWC
-		denoise[buff_idx] = color.r;
-		denoise[buff_idx + 1] = color.g;
-		denoise[buff_idx + 2] = color.b;
+		//denoise[buff_idx] = color.r;
+		//denoise[buff_idx + 1] = color.g;
+		//denoise[buff_idx + 2] = color.b;
 	}
 }
 
@@ -785,12 +785,12 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 		int buff_idx = index * 3;
 
 		glm::vec3 color = glm::vec3(0,0,0);
-		//color.x = glm::clamp(denoise[index], 0.f, 1.f);
-		//color.y = glm::clamp(denoise[index + numPixels], 0.f, 1.f);
-		//color.z = glm::clamp(denoise[index + 2 * numPixels], 0.f, 1.f);
-		color.r = glm::clamp(denoise[buff_idx], 0.f, 1.f);
-		color.g = glm::clamp(denoise[buff_idx + 1], 0.f, 1.f);
-		color.b = glm::clamp(denoise[buff_idx + 2], 0.f, 1.f);
+		color.x = glm::clamp(denoise[index], 0.f, 1.f);
+		color.y = glm::clamp(denoise[index + numPixels], 0.f, 1.f);
+		color.z = glm::clamp(denoise[index + 2 * numPixels], 0.f, 1.f);
+		//color.r = glm::clamp(denoise[buff_idx], 0.f, 1.f);
+		//color.g = glm::clamp(denoise[buff_idx + 1], 0.f, 1.f);
+		//color.b = glm::clamp(denoise[buff_idx + 2], 0.f, 1.f);
 
 		// Each thread writes one pixel location in the texture (textel)
 		image[index] = color;
@@ -827,7 +827,8 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 	std::cout << "setup: " << setup_duration.count() << std::endl;
 
 	auto nn_start = chrono::high_resolution_clock::now();
-	for (int i = 0; i < 20; ++i) {
+	int num_layers = 20;
+	for (int i = 0; i < num_layers; ++i) {
 		auto layer_start = chrono::high_resolution_clock::now();
 		// Load filter
 		int in_chan = 64;
@@ -835,7 +836,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		if (i == 0) {
 			in_chan = 3;
 		}
-		if (i == 19) {
+		if (i == num_layers - 1) {
 			out_chan = 3;
 		}
 		//// Conv forward
@@ -852,7 +853,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
 		//std::cout << "bias " << i << " :" << setup_duration.count() << std::endl;
 
-		if (i != 19) {
+		if (i != num_layers - 1) {
 			//setup_start = chrono::high_resolution_clock::now(); //buffer switching occurs here, outputs to input
 			//checkCUDNN(cudnnActivationForward(handle,
 			//	activation,
@@ -935,7 +936,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 	//tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	//image.dev = dev_denoise;
 	const float sub_alpha = -1.f, sub_beta = 1.f;
-	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[19].output_desc, input.dev, //output.dev for non-fusion code
+	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[num_layers - 1].output_desc, input.dev, //output.dev for non-fusion code
 				&sub_beta, model[0].input_desc, dev_denoise));
 	//addBias(handle, image, output, true);
 	auto nn_end = chrono::high_resolution_clock::now();

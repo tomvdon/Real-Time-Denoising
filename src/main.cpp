@@ -365,7 +365,7 @@ int main(int argc, char** argv) {
 
 	//dnCNN init
 	cudnnCreate(&handle);
-	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
+	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\");
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);

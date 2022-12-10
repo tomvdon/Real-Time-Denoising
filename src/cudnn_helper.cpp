@@ -76,8 +76,8 @@ void read_filter(tensor& filter, std::string f_path) {
 					pos = line.find(delimiter);
 					token = line.substr(0, pos);
 					float t = std::stof(token);
-					//int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l; //NCHW
-					int index = i * filter.h * filter.w * filter.c + k * filter.w * filter.c + l * filter.c + j; //NHWC
+					int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l; //NCHW
+					//int index = i * filter.h * filter.w * filter.c + k * filter.w * filter.c + l * filter.c + j; //NHWC
 					//std::cout << "setting index " << index << " to " << t << std::endl;
 					h_arr[index] = t;
 					line.erase(0, pos + delimiter.length());
@@ -282,14 +282,15 @@ void logTensor(tensor& t, std::string out_path, std::string name) {
 }
 
 void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path) {
-	for (int i = 0; i < 20; ++i) {
+	int num_layers = 20;
+	for (int i = 0; i < num_layers; ++i) {
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
 		if (i == 0) {
 			in_chan = 3;
 		}
-		if (i == 19) {
+		if (i == num_layers - 1) {
 			out_chan = 3;
 		}
 
@@ -298,24 +299,24 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 		// Read weights and biases and define descriptors
 		l.filter = tensor(out_chan, in_chan, 3, 3);
 		std::ostringstream path_stream;
-		path_stream << model_path << i * 2 << "_weight.csv";
+		path_stream << model_path << i << "_weight.csv";
 		std::string f_path = path_stream.str();
 		read_filter(l.filter, f_path);
 		checkCUDNN(cudnnCreateFilterDescriptor(&l.filter_desc));
 		checkCUDNN(cudnnSetFilter4dDescriptor(l.filter_desc,
 			/*dataType=*/CUDNN_DATA_FLOAT,
-			/*format=*/CUDNN_TENSOR_NHWC,
+			/*format=*/CUDNN_TENSOR_NCHW,
 			/*out_channels=*/out_chan,
 			/*in_channels=*/in_chan,
 			/*kernel_height=*/3,
 			/*kernel_width=*/3));
 
 		std::ostringstream bias_stream;
-		bias_stream << model_path << i * 2 << "_bias.csv";
+		bias_stream << model_path << i << "_bias.csv";
 		std::string bias_path = bias_stream.str();
 		l.bias = tensor();
 		readBias(out_chan, l.bias, bias_path);
-		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NHWC, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
+		createTensorDescriptor(l.bias_desc, CUDNN_TENSOR_NCHW, l.bias.n, l.bias.c, l.bias.h, l.bias.w);
 
 		//Define input out descriptors
 		// TODO probably need a better way to do this if the stride/padding make it so that resolution changes
@@ -328,8 +329,8 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 			//	kernel_descriptor,
 			//	&out_n, &out_c, &out_h, &out_w));
 
-		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NHWC, 1, in_chan, height, width);
-		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NHWC, 1, out_chan, height, width);
+		createTensorDescriptor(l.input_desc, CUDNN_TENSOR_NCHW, 1, in_chan, height, width);
+		createTensorDescriptor(l.output_desc, CUDNN_TENSOR_NCHW, 1, out_chan, height, width);
 
 		//Define convolution and convolution alg
 		checkCUDNN(cudnnCreateConvolutionDescriptor(&l.convolution));

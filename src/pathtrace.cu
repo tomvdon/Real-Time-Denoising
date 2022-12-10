@@ -815,7 +815,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 	cudaMalloc(&dev_output, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
 	output.dev = dev_output;
 
-	const float alpha = 1.f, beta = 0.f;
+	const float alpha = 1.f, beta = 0.f, alpha2 = 0.f;
 	cudnnActivationDescriptor_t activation;
 	checkCUDNN(cudnnCreateActivationDescriptor(&activation));
 	checkCUDNN(cudnnSetActivationDescriptor(activation,
@@ -828,7 +828,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 
 	auto nn_start = chrono::high_resolution_clock::now();
 	for (int i = 0; i < 20; ++i) {
-		setup_start = chrono::high_resolution_clock::now();
+		auto layer_start = chrono::high_resolution_clock::now();
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
@@ -838,35 +838,83 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		if (i == 19) {
 			out_chan = 3;
 		}
-		// Conv forward
-		convolutionalForward(handle, model[i], input, output);
-		setup_end = chrono::high_resolution_clock::now();
-		setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-		std::cout << "conv " << i << " :" << setup_duration.count() << std::endl;
+		//// Conv forward
+		//setup_start = chrono::high_resolution_clock::now();
+		//convolutionalForward(handle, model[i], input, output);
+		//setup_end = chrono::high_resolution_clock::now();
+		//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+		//std::cout << "conv " << i << " :" << setup_duration.count() << std::endl;
 
-		setup_start = chrono::high_resolution_clock::now();
-		// Add bias, done in place
-		addBias(handle, model[i], output, false);
-		setup_end = chrono::high_resolution_clock::now();
-		setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-		std::cout << "bias " << i << " :" << setup_duration.count() << std::endl;
-		// ReLU
-		// TODO closer look at documentation, it says HW-packed is faster. Does this mean NHWC is faster than NCHW?
-		// Can be done in place
+		//setup_start = chrono::high_resolution_clock::now();
+		//// Add bias, done in place
+		//addBias(handle, model[i], output, false);
+		//setup_end = chrono::high_resolution_clock::now();
+		//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+		//std::cout << "bias " << i << " :" << setup_duration.count() << std::endl;
+
 		if (i != 19) {
-			setup_start = chrono::high_resolution_clock::now();
-			checkCUDNN(cudnnActivationForward(handle,
-				activation,
-				&alpha,
+			//setup_start = chrono::high_resolution_clock::now(); //buffer switching occurs here, outputs to input
+			//checkCUDNN(cudnnActivationForward(handle,
+			//	activation,
+			//	&alpha,
+			//	model[i].output_desc,
+			//	output.dev,
+			//	&beta,
+			//	model[i].output_desc,
+			//	input.dev));
+			//setup_end = chrono::high_resolution_clock::now();
+			//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+			//std::cout << "relu " << i << " :" << setup_duration.count() << std::endl;
+			auto fusion_start = chrono::high_resolution_clock::now();
+			size_t workspace_bytes = 0;
+			checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(handle,
+				model[i].input_desc,
+				model[i].filter_desc,
+				model[i].convolution,
 				model[i].output_desc,
-				output.dev,
-				&beta,
-				model[i].output_desc,
-				input.dev));
-			setup_end = chrono::high_resolution_clock::now();
-			setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-			std::cout << "relu " << i << " :" << setup_duration.count() << std::endl;
+				model[i].conv_alg.algo,
+				&workspace_bytes));
+			void* d_workspace{ nullptr };
+			cudaMalloc(&d_workspace, workspace_bytes);
+			checkCUDNN(
+				cudnnConvolutionBiasActivationForward(
+					handle,
+					&alpha,
+					model[i].input_desc,
+					input.dev,
+					model[i].filter_desc,
+					model[i].filter.dev,
+					model[i].convolution,
+					model[i].conv_alg.algo,
+					d_workspace,
+					workspace_bytes,
+					&alpha2,
+					model[i].output_desc,
+					output.dev,
+					model[i].bias_desc,
+					model[i].bias.dev,
+					activation,
+					model[i].output_desc,
+					output.dev
+				)
+			);
+			cudaFree(d_workspace);
+			auto fusion_end = chrono::high_resolution_clock::now();
+			auto fusion_dur = std::chrono::duration_cast<std::chrono::microseconds>(fusion_end - fusion_start);
+			std::cout << "Fusion conv " << i << " :" << fusion_dur.count() << std::endl;
 		}
+		else {
+			auto forward_start = chrono::high_resolution_clock::now();
+			// Conv forward
+			convolutionalForward(handle, model[i], input, output);
+
+			// Add bias, done in place
+			addBias(handle, model[i], output, false);
+			auto forward_end = chrono::high_resolution_clock::now();
+			auto forward_dur = std::chrono::duration_cast<std::chrono::microseconds>(forward_end - forward_start);
+			std::cout << "Normal conv " << i << " :" << forward_dur.count() << std::endl;
+		}
+		
 		// Free input stuff, set input to output
 		//cudaFree(input.dev);
 		//free(input.host);
@@ -874,17 +922,20 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		input.c = output.c;
 		input.h = output.h;
 		input.w = output.w;
-		//input.dev = output.dev;
+		// Ping pong buffers
+		float* temp = input.dev;
+		input.dev = output.dev;
+		output.dev = temp;
 		//input.host = output.host;
-		setup_end = chrono::high_resolution_clock::now();
-		setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-		std::cout << "layer " << i << " :" << setup_duration.count() << std::endl;
+		auto layer_end = chrono::high_resolution_clock::now();
+		auto layer_dur = std::chrono::duration_cast<std::chrono::microseconds>(layer_end - layer_start);
+		std::cout << "layer " << i << " :" << layer_dur.count() << std::endl;
 	}
 	
 	//tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
 	//image.dev = dev_denoise;
 	const float sub_alpha = -1.f, sub_beta = 1.f;
-	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[19].output_desc, output.dev, 
+	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[19].output_desc, input.dev, //output.dev for non-fusion code
 				&sub_beta, model[0].input_desc, dev_denoise));
 	//addBias(handle, image, output, true);
 	auto nn_end = chrono::high_resolution_clock::now();

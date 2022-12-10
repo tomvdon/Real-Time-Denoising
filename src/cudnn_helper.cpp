@@ -353,7 +353,20 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 				/*ReturnedNumAlgs*/&num_algs,
 				&l.conv_alg));
 		// TODO maybe add workspace loading ?
-		std::cout << l.conv_alg.algo << std::endl;
+
+		//typedef enum {
+		//CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM = 0,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM = 1,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_GEMM = 2,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_DIRECT = 3,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_FFT = 4,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING = 5,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD = 6,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED = 7,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_COUNT = 8
+		//} cudnnConvolutionFwdAlgo_t;
+
+		std::cout << "Layer alg for " << i << " " <<  l.conv_alg.algo << std::endl;
 		model.push_back(l);
 	}
 }

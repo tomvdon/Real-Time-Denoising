@@ -108,10 +108,8 @@ static PathSegment* dev_first_paths = NULL;
 static Geom* dev_tinyobj = NULL;
 static float* dev_denoise = NULL;
 
-static bool denoise_on = true;
 static tensor input;
 static tensor output;
-static int denoise_iter = 2;
 
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
@@ -863,19 +861,6 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 		}
 
 		if (i != num_layers - 1) {
-			//setup_start = chrono::high_resolution_clock::now(); //buffer switching occurs here, outputs to input
-			//checkCUDNN(cudnnActivationForward(handle,
-			//	activation,
-			//	&alpha,
-			//	model[i].output_desc,
-			//	output.dev,
-			//	&beta,
-			//	model[i].output_desc,
-			//	input.dev));
-			//setup_end = chrono::high_resolution_clock::now();
-			//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-			//std::cout << "relu " << i << " :" << setup_duration.count() << std::endl;
-
 			auto fusion_start = chrono::high_resolution_clock::now();
 			checkCUDNN(
 				cudnnConvolutionBiasActivationForward(
@@ -1019,7 +1004,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 
 	bool iterationComplete = false;
 
-	while (!iterationComplete && (!denoise_on || iter < 5000)) {
+	while (!iterationComplete) {
 
 
 		// clean shading chunks
@@ -1176,27 +1161,25 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 	auto pt_end = chrono::high_resolution_clock::now();
 	auto pt_duration = std::chrono::duration_cast<std::chrono::microseconds>(pt_end - pt_start);
 
-	if (true)
-	{
-		std::cout << "PathTracing " << pt_duration.count() << std::endl;
-		std::cout << "Ray Generation: " << ray_time << std::endl;
-		std::cout << "Intersection: " << intersections << std::endl;
-		std::cout << "Compaction: " << compaction << std::endl;
-		std::cout << "Material: " << material_time << std::endl;
-		std::cout << "Shading: " << shading_time << std::endl;
-	}
+	std::cout << "PathTracing " << pt_duration.count() << std::endl;
+	std::cout << "Ray Generation: " << ray_time << std::endl;
+	std::cout << "Intersection: " << intersections << std::endl;
+	std::cout << "Compaction: " << compaction << std::endl;
+	std::cout << "Material: " << material_time << std::endl;
+	std::cout << "Shading: " << shading_time << std::endl;
+
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
 
-	if (!denoise_on || iter < 5000) {
-		// Assemble this iteration and apply it to the image
-		//finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
-		// Send results to OpenGL buffer for rendering
-		//sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
-	}
-		
+	//if (!denoise_on || iter < 5000) {
+	//	// Assemble this iteration and apply it to the image
+	//	//finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+	//	// Send results to OpenGL buffer for rendering
+	//	//sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
+	//}
 
 	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
-	if (denoise_on) {
+
+	if (ui_denoise && (iter % ui_iterations == 0)) {
 		auto dn_start = chrono::high_resolution_clock::now();
 		cudaMemcpy(dev_dn_image, dev_image,
 			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
@@ -1227,6 +1210,12 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		auto dn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dn_end - dn_start);
 		std::cout << "Full denoise: " << dncnn_duration.count() << std::endl;
+	}
+	else if (!ui_denoise) {
+		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
+	}
+	else {
+		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_dn_image);
 	}
 
 	///////////////////////////////////////////////////////////////////////////

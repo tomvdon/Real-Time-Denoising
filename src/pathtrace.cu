@@ -1200,10 +1200,8 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model Time: " << dncnn_duration.count() << std::endl;
 		dncnn_start = chrono::high_resolution_clock::now();
-
 		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_dn_image, dev_denoise, cam.resolution, iter);
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_dn_image);
-
 		dncnn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model to PBO: " << dncnn_duration.count() << std::endl;
@@ -1211,7 +1209,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dn_end - dn_start);
 		std::cout << "Full denoise: " << dncnn_duration.count() << std::endl;
 	}
-	else if (!ui_denoise) {
+	else if (!ui_denoise || iter < ui_iterations) { // iter < ui_iter, denoise image does not exist yet, show path traced
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
 	else {

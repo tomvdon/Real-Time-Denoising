@@ -18,7 +18,7 @@
 #include <thrust/partition.h>
 
 #define DIRECT 0
-#define CACHE_FIRST_BOUNCE 0
+#define CACHE_FIRST_BOUNCE 1
 #define SORT_MATERIAL 0
 #define COMPACTION 1
 #define DEPTH_OF_FIELD 0
@@ -1040,18 +1040,23 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		//if first intersection in iteration 1, compute intersection to dev_firstBounce
 		//and then copy dev_firstBounce to dev_intersections
 		if (iter == 1 && depth == 0) {
+			auto inter_start = chrono::high_resolution_clock::now();
 			computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (
-				depth,
-				num_paths,
-				dev_paths,
-				dev_geoms,
-				hst_scene->geoms.size(),
-				dev_tinyobj,
-				hst_scene->Obj_geoms.size(),
-				dev_firstBounce
+				depth
+				, num_paths
+				, dev_paths
+				, dev_geoms
+				, hst_scene->geoms.size()
+				, dev_tris
+				, hst_scene->num_tris
+				, dev_firstBounce
+				, dev_bvh_nodes
 				);
 			checkCUDAError("trace one bounce");
 			cudaDeviceSynchronize();
+			auto inter_end = chrono::high_resolution_clock::now();
+			auto inter_duration = std::chrono::duration_cast<std::chrono::microseconds>(inter_end - inter_start);
+			intersections += inter_duration.count();
 			cudaMemcpy(dev_intersections, dev_firstBounce, num_paths * sizeof(ShadeableIntersection), cudaMemcpyDeviceToDevice);
 		}
 		//if not first iteration but first bounce
@@ -1060,19 +1065,23 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 			cudaMemcpy(dev_intersections, dev_firstBounce, num_paths * sizeof(ShadeableIntersection), cudaMemcpyDeviceToDevice);
 		}
 		else {
+			auto inter_start = chrono::high_resolution_clock::now();
 			computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (
-				depth,
-				num_paths,
-				dev_paths,
-				dev_geoms,
-				hst_scene->geoms.size(),
-				dev_tinyobj,
-				hst_scene->Obj_geoms.size(),
-				dev_intersections,
-				iter
+				depth
+				, num_paths
+				, dev_paths
+				, dev_geoms
+				, hst_scene->geoms.size()
+				, dev_tris
+				, hst_scene->num_tris
+				, dev_intersections
+				, dev_bvh_nodes
 				);
 			checkCUDAError("trace one bounce");
 			cudaDeviceSynchronize();
+			auto inter_end = chrono::high_resolution_clock::now();
+			auto inter_duration = std::chrono::duration_cast<std::chrono::microseconds>(inter_end - inter_start);
+			intersections += inter_duration.count();
 		}
 #else 
 		//computeIntersections << <numblocksPathSegmentTracing, blockSize1d >> > (

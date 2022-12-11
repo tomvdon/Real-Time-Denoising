@@ -9,8 +9,6 @@
 struct tensor;
 struct layer;
 
-extern int ui_iterations;
-
 void InitDataContainer(GuiDataContainer* guiData);
 void pathtraceInit(Scene *scene);
 void pathtraceFree();

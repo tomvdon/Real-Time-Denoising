@@ -19,7 +19,7 @@
 
 #define DIRECT 0
 #define CACHE_FIRST_BOUNCE 0
-#define SORT_MATERIAL 1
+#define SORT_MATERIAL 0
 #define COMPACTION 1
 #define DEPTH_OF_FIELD 0
 #define ANTI_ALIASING 0
@@ -159,10 +159,16 @@ void pathtraceInit(Scene* scene) {
 	cudaMemcpy(dev_bvh_nodes, scene->bvh_nodes_gpu.data(), scene->bvh_nodes_gpu.size() * sizeof(GPUBVHNode), cudaMemcpyHostToDevice);
 
 	// Denoise image buffer
-	cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
-	cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
-
-	input = tensor(1, 3, cam.resolution.y, cam.resolution.x);
+	input = tensor(1, 3, cam.resolution.y, cam.resolution.x); //9 for gbuffer data
+	if (use_gbuff) {
+		input.c = 9;
+		cudaMalloc(&dev_denoise, pixelcount * 9 * sizeof(float)); //9 for gbuffer data
+		cudaMemset(dev_denoise, 0, pixelcount * 9 * sizeof(float));
+	}
+	else {
+		cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
+		cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
+	}
 	// Use copy of image so that we can subtract noise from original image
 	cudaMalloc(&input.dev, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
 
@@ -813,6 +819,25 @@ __global__ void vecToBuff(int numPixels, glm::vec3* image, float* denoise, glm::
 	}
 }
 
+__global__ void gbuffToBuff(int numPixels, GBufferPixel* gbuff, float* denoise, glm::ivec2 resolution) {
+	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
+	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
+
+	if (x < resolution.x && y < resolution.y) {
+		int index = x + (y * resolution.x);
+		glm::vec3 normal = gbuff[index].normal;
+		glm::vec3 pos = gbuff[index].position;
+
+		//Gbuffer (first 3 channels are for image pix)
+		denoise[index + 3 * numPixels] = normal.x / 255.f;
+		denoise[index + 4 * numPixels] = normal.y / 255.f;
+		denoise[index + 5 * numPixels] = normal.z / 255.f;
+		denoise[index + 6 * numPixels] = pos.x / 255.f;
+		denoise[index + 7 * numPixels] = pos.y / 255.f;
+		denoise[index + 8 * numPixels] = pos.z / 255.f;
+	}
+}
+
 __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::ivec2 resolution, int iter) {
 	int x = (blockIdx.x * blockDim.x) + threadIdx.x;
 	int y = (blockIdx.y * blockDim.y) + threadIdx.y;
@@ -838,8 +863,8 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	auto setup_start = chrono::high_resolution_clock::now();
 
 	const Camera& cam = hst_scene->state.camera;
-	cudaMemcpy(input.dev, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
-
+	std::cout << input.c << std::endl;
+	cudaMemcpy(input.dev, dev_denoise, sizeof(float) * input.c * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
 	const float alpha = 1.f, beta = 0.f, alpha2 = 0.f;
 
 	auto setup_end = chrono::high_resolution_clock::now();
@@ -847,14 +872,13 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	std::cout << "setup: " << setup_duration.count() << std::endl;
 
 	auto nn_start = chrono::high_resolution_clock::now();
-	int num_layers = 20;
 	for (int i = 0; i < num_layers; ++i) {
 		auto layer_start = chrono::high_resolution_clock::now();
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
 		if (i == 0) {
-			in_chan = 3;
+			in_chan = use_gbuff ? 9 : 3;
 		}
 		if (i == num_layers - 1) {
 			out_chan = 3;
@@ -899,11 +923,11 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 			auto forward_dur = std::chrono::duration_cast<std::chrono::microseconds>(forward_end - forward_start);
 			std::cout << "Normal conv " << i << " :" << forward_dur.count() << std::endl;
 		}
-
-		input.n = output.n;
-		input.c = output.c;
-		input.h = output.h;
-		input.w = output.w;
+		// we dont actually use these anywhere, could just have the tensors be float*
+		//input.n = output.n;
+		//input.c = output.c;
+		//input.h = output.h;
+		//input.w = output.w;
 		// Ping pong buffers
 		float* temp = input.dev;
 		input.dev = output.dev;
@@ -915,7 +939,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	
 	const float sub_alpha = -1.f, sub_beta = 1.f;
 	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[num_layers - 1].output_desc, input.dev, //output.dev for non-fusion code
-				&sub_beta, model[0].input_desc, dev_denoise));
+				&sub_beta, model[num_layers - 1].output_desc, dev_denoise));
 
 	auto nn_end = chrono::high_resolution_clock::now();
 	auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
@@ -1082,9 +1106,11 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 
 #endif
 
-		if (depth == 0 && iter == 1)
+		if (use_gbuff && depth == 0 && iter == 1)
 		{
+			std::cout << "Stashing gbuff" << std::endl;
 			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
+			gbuffToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_gBuffer, dev_denoise, cam.resolution);
 		}
 
 		depth++;
@@ -1169,14 +1195,6 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 	std::cout << "Shading: " << shading_time << std::endl;
 
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-
-	//if (!denoise_on || iter < 5000) {
-	//	// Assemble this iteration and apply it to the image
-	//	//finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
-	//	// Send results to OpenGL buffer for rendering
-	//	//sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
-	//}
-
 	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
 
 	if (ui_denoise && (iter % ui_iterations == 0)) {
@@ -1184,7 +1202,6 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		cudaMemcpy(dev_dn_image, dev_image,
 			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
 		std::cout << "Denoising" << std::endl;
-
 		// Denoise
 		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
 		auto dncnn_start = chrono::high_resolution_clock::now();
@@ -1195,7 +1212,6 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		std::cout << "PBO to model: " << dncnn_duration.count() << std::endl;
 		dncnn_start = chrono::high_resolution_clock::now();
 		dnCNN(handle, model, workspace);
-		//cudaDeviceSynchronize();
 		dncnn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model Time: " << dncnn_duration.count() << std::endl;

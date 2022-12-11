@@ -262,13 +262,12 @@ void logTensor(tensor& t, std::string out_path, std::string name) {
 }
 
 void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path) {
-	int num_layers = 20;
 	for (int i = 0; i < num_layers; ++i) {
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
 		if (i == 0) {
-			in_chan = 3;
+			in_chan = use_gbuff ? 9 : 3;
 		}
 		if (i == num_layers - 1) {
 			out_chan = 3;

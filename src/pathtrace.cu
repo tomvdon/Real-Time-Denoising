@@ -106,6 +106,9 @@ static PathSegment* dev_first_paths = NULL;
 static Geom* dev_tinyobj = NULL;
 static float* dev_denoise = NULL;
 
+static tensor input;
+static tensor output;
+
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
 	guiData = imGuiData;
@@ -151,6 +154,13 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_denoise, pixelcount * 3 * sizeof(float));
 	cudaMemset(dev_denoise, 0, pixelcount * 3 * sizeof(float));
 
+	input = tensor(1, 3, cam.resolution.y, cam.resolution.x);
+	// Use copy of image so that we can subtract noise from original image
+	cudaMalloc(&input.dev, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+
+	output = tensor(1, 64, cam.resolution.y, cam.resolution.x);
+	cudaMalloc(&output.dev, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
+
 	checkCUDAError("pathtraceInit");
 }
 
@@ -173,6 +183,8 @@ void pathtraceFree() {
 
 	//cuDNN
 	cudaFree(dev_denoise);
+	cudaFree(input.dev);
+	cudaFree(output.dev);
 
 	checkCUDAError("pathtraceFree");
 }
@@ -797,31 +809,14 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 	}
 }
 
-void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
+void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	auto setup_start = chrono::high_resolution_clock::now();
 
 	const Camera& cam = hst_scene->state.camera;
-
-	tensor input = tensor(1, 3, cam.resolution.y, cam.resolution.x);
-	// Use copy of image so that we can subtract noise from original image
-	float* dev_input;
-	cudaMalloc(&dev_input, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
-	cudaMemcpy(dev_input, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
-	input.dev = dev_input;
-	//input.host = h_input;
-
-	tensor output = tensor(1, 64, cam.resolution.y, cam.resolution.x);
-	float* dev_output;
-	cudaMalloc(&dev_output, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
-	output.dev = dev_output;
+	cudaMemcpy(input.dev, dev_denoise, sizeof(float) * 3 * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
 
 	const float alpha = 1.f, beta = 0.f, alpha2 = 0.f;
-	cudnnActivationDescriptor_t activation;
-	checkCUDNN(cudnnCreateActivationDescriptor(&activation));
-	checkCUDNN(cudnnSetActivationDescriptor(activation,
-		CUDNN_ACTIVATION_RELU,
-		CUDNN_PROPAGATE_NAN,
-		0.0));
+
 	auto setup_end = chrono::high_resolution_clock::now();
 	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
 	std::cout << "setup: " << setup_duration.count() << std::endl;
@@ -866,17 +861,8 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 			//setup_end = chrono::high_resolution_clock::now();
 			//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
 			//std::cout << "relu " << i << " :" << setup_duration.count() << std::endl;
+
 			auto fusion_start = chrono::high_resolution_clock::now();
-			size_t workspace_bytes = 0;
-			checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(handle,
-				model[i].input_desc,
-				model[i].filter_desc,
-				model[i].convolution,
-				model[i].output_desc,
-				model[i].conv_alg.algo,
-				&workspace_bytes));
-			void* d_workspace{ nullptr };
-			cudaMalloc(&d_workspace, workspace_bytes);
 			checkCUDNN(
 				cudnnConvolutionBiasActivationForward(
 					handle,
@@ -887,19 +873,18 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 					model[i].filter.dev,
 					model[i].convolution,
 					model[i].conv_alg.algo,
-					d_workspace,
-					workspace_bytes,
+					workspace,
+					4000000,
 					&alpha2,
 					model[i].output_desc,
 					output.dev,
 					model[i].bias_desc,
 					model[i].bias.dev,
-					activation,
+					model[i].relu,
 					model[i].output_desc,
 					output.dev
 				)
 			);
-			cudaFree(d_workspace);
 			auto fusion_end = chrono::high_resolution_clock::now();
 			auto fusion_dur = std::chrono::duration_cast<std::chrono::microseconds>(fusion_end - fusion_start);
 			std::cout << "Fusion conv " << i << " :" << fusion_dur.count() << std::endl;
@@ -907,7 +892,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		else {
 			auto forward_start = chrono::high_resolution_clock::now();
 			// Conv forward
-			convolutionalForward(handle, model[i], input, output);
+			convolutionalForward(handle, model[i], input, output, workspace);
 
 			// Add bias, done in place
 			addBias(handle, model[i], output, false);
@@ -933,24 +918,20 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
 		std::cout << "layer " << i << " :" << layer_dur.count() << std::endl;
 	}
 	
-	//tensor image = tensor(1, 3, cam.resolution.y, cam.resolution.x);
-	//image.dev = dev_denoise;
 	const float sub_alpha = -1.f, sub_beta = 1.f;
 	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[num_layers - 1].output_desc, input.dev, //output.dev for non-fusion code
 				&sub_beta, model[0].input_desc, dev_denoise));
-	//addBias(handle, image, output, true);
+
 	auto nn_end = chrono::high_resolution_clock::now();
 	auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
 	std::cout << "NN DUR: " << nn_duration.count() << std::endl;
-
-	setup_start = chrono::high_resolution_clock::now();
-	cudnnDestroyActivationDescriptor(activation);
-	cudaFree(input.dev);
-	cudaFree(output.dev);
+	//setup_start = chrono::high_resolution_clock::now();
+	//cudaFree(input.dev);
+	//cudaFree(output.dev);
 	//free(input.host);
-	setup_end = chrono::high_resolution_clock::now();
-	setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-	std::cout << "clean up: "<< setup_duration.count() << std::endl;
+	//setup_end = chrono::high_resolution_clock::now();
+	//setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	//std::cout << "clean up: "<< setup_duration.count() << std::endl;
 }
 
 /**
@@ -958,7 +939,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model) {
  * of memory management
  */
  
-void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int frame, int iter) {
+void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int frame, int iter, float* workspace) {
 	auto pt_start = chrono::high_resolution_clock::now();
 	const int traceDepth = hst_scene->state.traceDepth;
 	const Camera& cam = hst_scene->state.camera;
@@ -1214,7 +1195,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		auto dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "PBO to model: " << dncnn_duration.count() << std::endl;
 		dncnn_start = chrono::high_resolution_clock::now();
-		dnCNN(handle, model);
+		dnCNN(handle, model, workspace);
 		dncnn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model Time: " << dncnn_duration.count() << std::endl;

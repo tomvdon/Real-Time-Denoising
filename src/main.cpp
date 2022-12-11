@@ -44,6 +44,7 @@ int height;
 // or at least in layer ?
 static cudnnHandle_t handle;
 static std::vector<layer> model;
+static float* conv_workspace;
 
 bool ui_denoise = false;
 int ui_iterations = 1;
@@ -368,7 +369,10 @@ int main(int argc, char** argv) {
 
 	//dnCNN init
 	cudnnCreate(&handle);
-	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
+
+	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\");
+	cudaMalloc(&conv_workspace, 4000000);
+
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);
@@ -387,8 +391,10 @@ int main(int argc, char** argv) {
 		cudnnDestroyTensorDescriptor(l.output_desc);
 		cudnnDestroyFilterDescriptor(l.filter_desc);
 		cudnnDestroyConvolutionDescriptor(l.convolution);
+		cudnnDestroyActivationDescriptor(l.relu);
 	}
 	cudnnDestroy(handle);
+	cudaFree(conv_workspace);
 
 	return 0;
 }
@@ -456,7 +462,7 @@ void runCuda() {
 		auto start = std::chrono::steady_clock::now();
 
 		int frame = 0;
-		pathtrace(pbo_dptr, handle, model, frame, iteration);
+		pathtrace(pbo_dptr, handle, model, frame, iteration, conv_workspace);
 
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> elapsed_seconds = end - start;

@@ -13,4 +13,4 @@ struct layer;
 void InitDataContainer(GuiDataContainer* guiData);
 void pathtraceInit(Scene *scene);
 void pathtraceFree();
-void pathtrace(uchar4 *pbo, cudnnHandle_t handle, std::vector<layer>& model, int frame, int iteration);
+void pathtrace(uchar4 *pbo, cudnnHandle_t handle, std::vector<layer>& model, int frame, int iteration, float* workspace);

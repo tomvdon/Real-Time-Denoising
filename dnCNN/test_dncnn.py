@@ -28,7 +28,8 @@ if __name__ == '__main__':
     # restored = F.pixel_shuffle(out, 2)
 
     #model_path = 'original_dncnn.pth'
-    model_path = '5000_G.pth'
+    #model_path = 'weights_small/9Channel_10_layers_15000.pth'
+    model_path = '200000_G.pth'
     # From Kai Zhang, dnnn_color_blind is nb=20
     # act_mode determines what the actiavation is, for example: BR == batch norm + ReLU
     # R == ReLU, we can ignore batch norm since utils_bnorm.merge_bn was ran, see https://github.com/cszn/KAIR/blob/master/utils/utils_bnorm.py 
@@ -36,27 +37,35 @@ if __name__ == '__main__':
     yo = torch.load(model_path)
 
     model = DnCNN(in_nc=3, out_nc=3, nc=64, nb=20, act_mode='R')
-    add_bn(model)
+    #add_bn(model)
     #model = FFDNet(in_nc=3, out_nc=3, nc=96, nb=12, act_mode='R')
+    # i = 0
+    # for s in yo.keys():
+    #     if 'weight' in s:
+    #         i += 1
+    #         print(yo[s].shape)
+    # print(i)
+
     model.load_state_dict(torch.load(model_path), strict=True)
-    model.eval()
-    merge_bn(model)
-    tidy_sequential(model)
+    # model.eval()
+    # merge_bn(model)
+    # tidy_sequential(model)
     for k, v in model.named_parameters():
         v.requires_grad = False
     params = {}
 
-    if not os.path.exists('weights_bn/'):
-        os.mkdir('weights_bn/')
+    if not os.path.exists('weights_renamed/'):
+        os.mkdir('weights_renamed/')
+    i = 0
     for name, param in model.named_parameters():
         print(name)
         params[name] = param
         name_list = name.split('.')
         if name_list[-1] == 'weight':
-            # NOTE Might need to do some reshaping or permuting here?
             param = torch.flatten(param, start_dim=0, end_dim=1) 
             param = torch.flatten(param, start_dim=1, end_dim=2)
-        np.savetxt('weights_bn/' + name_list[1] + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+        np.savetxt('weights_renamed/' + str(int(i/2)) + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+        i += 1
     import pdb
     pdb.set_trace()
     img_path = 'test.png'

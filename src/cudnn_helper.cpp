@@ -76,7 +76,8 @@ void read_filter(tensor& filter, std::string f_path) {
 					pos = line.find(delimiter);
 					token = line.substr(0, pos);
 					float t = std::stof(token);
-					int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l;
+					int index = i * filter.c * filter.h * filter.w + j * filter.h * filter.w + k * filter.w + l; //NCHW
+					//int index = i * filter.h * filter.w * filter.c + k * filter.w * filter.c + l * filter.c + j; //NHWC
 					//std::cout << "setting index " << index << " to " << t << std::endl;
 					h_arr[index] = t;
 					line.erase(0, pos + delimiter.length());
@@ -157,28 +158,8 @@ void readBias(int channels, tensor& output, std::string bias_path) {
 	fp_in.close();
 }
 
-void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output) {
-	// Assumes input and out are always NHWC
-	// Outputs tensor struct
-
+void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output, float* workspace) {
 	auto setup_start = chrono::high_resolution_clock::now();
-
-	// Find workspace size needed
-	size_t workspace_bytes = 0;
-	checkCUDNN(cudnnGetConvolutionForwardWorkspaceSize(handle,
-		l.input_desc,
-		l.filter_desc,
-		l.convolution,
-		l.output_desc,
-		l.conv_alg.algo,
-		&workspace_bytes));
-	void* d_workspace{ nullptr };
-	cudaMalloc(&d_workspace, workspace_bytes);
-	auto setup_end = chrono::high_resolution_clock::now();
-	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-	std::cout << "workspace setup: " << setup_duration.count() << std::endl;
-
-	setup_start = chrono::high_resolution_clock::now();
 	// Do convolution forward
 	const float alpha = 1, beta = 0;
 	checkCUDNN(cudnnConvolutionForward(handle,
@@ -189,17 +170,14 @@ void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor&
 		l.filter.dev,
 		l.convolution,
 		l.conv_alg.algo,
-		d_workspace,
-		workspace_bytes,
+		workspace,
+		4000000,
 		&beta,
 		l.output_desc,
 		output.dev));
 
-	// Free up stuff
-	cudaFree(d_workspace);
-
-	setup_end = chrono::high_resolution_clock::now();
-	setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	auto setup_end = chrono::high_resolution_clock::now();
+	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
 	std::cout << "conv forward: " << setup_duration.count() << std::endl;
 }
 
@@ -284,14 +262,15 @@ void logTensor(tensor& t, std::string out_path, std::string name) {
 }
 
 void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int width, std::string model_path) {
-	for (int i = 0; i < 20; ++i) {
+	int num_layers = 20;
+	for (int i = 0; i < num_layers; ++i) {
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
 		if (i == 0) {
 			in_chan = 3;
 		}
-		if (i == 19) {
+		if (i == num_layers - 1) {
 			out_chan = 3;
 		}
 
@@ -300,7 +279,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 		// Read weights and biases and define descriptors
 		l.filter = tensor(out_chan, in_chan, 3, 3);
 		std::ostringstream path_stream;
-		path_stream << model_path << i * 2 << "_weight.csv";
+		path_stream << model_path << i << "_weight.csv";
 		std::string f_path = path_stream.str();
 		read_filter(l.filter, f_path);
 		checkCUDNN(cudnnCreateFilterDescriptor(&l.filter_desc));
@@ -313,7 +292,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 			/*kernel_width=*/3));
 
 		std::ostringstream bias_stream;
-		bias_stream << model_path << i * 2 << "_bias.csv";
+		bias_stream << model_path << i << "_bias.csv";
 		std::string bias_path = bias_stream.str();
 		l.bias = tensor();
 		readBias(out_chan, l.bias, bias_path);
@@ -344,6 +323,7 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 			/*dilation_width=*/1,
 			/*mode=*/CUDNN_CROSS_CORRELATION,
 			/*computeType=*/CUDNN_DATA_FLOAT));
+
 		int num_algs = 0;
 		checkCUDNN(
 			cudnnFindConvolutionForwardAlgorithm(handle,
@@ -354,7 +334,29 @@ void loadDncnn(cudnnHandle_t handle, std::vector<layer>& model, int height, int 
 				/*RequestedNumAlgs*/1,
 				/*ReturnedNumAlgs*/&num_algs,
 				&l.conv_alg));
-		// TODO maybe add workspace loading ?
+
+		cudnnSetConvolutionMathType(l.convolution, CUDNN_TENSOR_OP_MATH);
+		
+		// Relu
+		checkCUDNN(cudnnCreateActivationDescriptor(&l.relu));
+		checkCUDNN(cudnnSetActivationDescriptor(l.relu,
+			CUDNN_ACTIVATION_RELU,
+			CUDNN_PROPAGATE_NAN,
+			0.0));
+
+		//typedef enum {
+		//CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM = 0,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM = 1,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_GEMM = 2,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_DIRECT = 3,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_FFT = 4,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING = 5,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD = 6,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED = 7,
+		//	CUDNN_CONVOLUTION_FWD_ALGO_COUNT = 8
+		//} cudnnConvolutionFwdAlgo_t;
+
+		std::cout << "Layer alg for " << i << " " <<  l.conv_alg.algo << std::endl;
 		model.push_back(l);
 	}
 }

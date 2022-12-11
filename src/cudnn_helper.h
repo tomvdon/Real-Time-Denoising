@@ -42,14 +42,15 @@ struct layer {
 	cudnnFilterDescriptor_t filter_desc;
 	cudnnConvolutionDescriptor_t convolution;
 	cudnnConvolutionFwdAlgoPerf_t conv_alg;
-};
+	cudnnActivationDescriptor_t relu;
+}; 
 
 cv::Mat load_image(const char* image_path);
 void opencv_saveimage(const char* output_filename, float* buffer, int height, int width);
 void read_filter(tensor& filter, std::string f_path);
 void createTensorDescriptor(cudnnTensorDescriptor_t& descriptor, cudnnTensorFormat_t format, int n, int c, int h, int w);
 void readBias(int channels, tensor& output, std::string bias_path);
-void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output);
+void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output, float* workspace);
 void addBias(cudnnHandle_t handle, layer& l, tensor& bias, bool subtract);
 void reshapeTensor(cudnnHandle_t handle, tensor& t, cudnnTensorFormat_t in_format, cudnnTensorFormat_t out_format);
 void logTensor(tensor& t, std::string out_path, std::string name);

@@ -3,10 +3,14 @@
 #include <vector>
 #include "scene.h"
 #include "main.h"
+#include "cudnn.h"
 
+//circular dependecies
 struct tensor;
+struct layer;
+
 
 void InitDataContainer(GuiDataContainer* guiData);
 void pathtraceInit(Scene *scene);
 void pathtraceFree();
-void pathtrace(uchar4 *pbo, int frame, int iteration, std::vector<tensor>& filters, std::vector<tensor>& biases);
+void pathtrace(uchar4 *pbo, cudnnHandle_t handle, std::vector<layer>& model, int frame, int iteration);

@@ -37,9 +37,13 @@ int iteration;
 
 int width;
 int height;
+#include <chrono>
 
-static std::vector<tensor> filters;
-static std::vector<tensor> biases;
+//cuDNN stuff
+// TODO maybe have a global activation and convolution descriptor?
+// or at least in layer ?
+static cudnnHandle_t handle;
+static std::vector<layer> model;
 
 bool ui_denoise = false;
 int ui_iterations = 1;
@@ -362,8 +366,9 @@ int main(int argc, char** argv) {
 	// Initialize CUDA and GL components
 	init();
 
-	// Load dnCNN
-	loadDncnn(filters, biases, "..\\dnCNN\\weights\\");
+	//dnCNN init
+	cudnnCreate(&handle);
+	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\Tom\\CIS5650\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights\\");
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);
@@ -372,16 +377,18 @@ int main(int argc, char** argv) {
 	// GLFW main loop
 	mainLoop();
 
-	// Free model
-	// TODO maybe we dont need host buffers?
-	for (tensor t : filters) {
-		cudaFree(t.dev);
-		free(t.host);
+	//dnCNN cleanup
+	for (layer& l : model) {
+		cudaFree(l.filter.dev);
+		cudaFree(l.bias.dev);
+		free(l.filter.host);
+		free(l.bias.host);
+		cudnnDestroyTensorDescriptor(l.input_desc);
+		cudnnDestroyTensorDescriptor(l.output_desc);
+		cudnnDestroyFilterDescriptor(l.filter_desc);
+		cudnnDestroyConvolutionDescriptor(l.convolution);
 	}
-	for (tensor t : biases) {
-		cudaFree(t.dev);
-		free(t.host);
-	}
+	cudnnDestroy(handle);
 
 	return 0;
 }
@@ -410,6 +417,7 @@ void saveImage() {
 }
 
 void runCuda() {
+	auto start = chrono::high_resolution_clock::now();
 	if (camchanged) {
 		iteration = 0;
 		Camera& cam = renderState->camera;
@@ -448,7 +456,7 @@ void runCuda() {
 		auto start = std::chrono::steady_clock::now();
 
 		int frame = 0;
-		pathtrace(pbo_dptr, frame, iteration, filters, biases);
+		pathtrace(pbo_dptr, handle, model, frame, iteration);
 
 		auto end = std::chrono::steady_clock::now();
 		std::chrono::duration<double> elapsed_seconds = end - start;
@@ -463,6 +471,9 @@ void runCuda() {
 		cudaDeviceReset();
 		exit(EXIT_SUCCESS);
 	}
+	auto end = chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	//std::cout << "One Iteration: " << duration.count() << std::endl;
 }
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {

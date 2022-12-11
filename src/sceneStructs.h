@@ -228,3 +228,10 @@ struct Tri {
     float S;
     int mat_ID;
 };
+
+class GBufferPixel {
+public:
+    float t;
+    glm::vec3 normal;
+    glm::vec3 position;
+};

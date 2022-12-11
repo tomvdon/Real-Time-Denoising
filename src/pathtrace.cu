@@ -88,6 +88,9 @@ static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
 
+//GBuffer
+static GBufferPixel* dev_gBuffer = NULL;
+
 //BVH
 static GPUBVHNode* dev_bvh_nodes = NULL;
 static Tri* dev_tris = NULL;
@@ -137,6 +140,9 @@ void pathtraceInit(Scene* scene) {
 	cudaMalloc(&dev_tinyobj, scene->Obj_geoms.size() * sizeof(Geom));
 	cudaMemcpy(dev_tinyobj, scene->Obj_geoms.data(), scene->Obj_geoms.size() * sizeof(Geom), cudaMemcpyHostToDevice);
 
+	//GBuffer
+	cudaMalloc(&dev_gBuffer, pixelcount * sizeof(GBufferPixel));
+
 	//BVH
 	cudaMalloc(&dev_tris, scene->num_tris * sizeof(Tri));
 	cudaMemcpy(dev_tris, scene->mesh_tris_sorted.data(), scene->num_tris * sizeof(Tri), cudaMemcpyHostToDevice);
@@ -163,6 +169,9 @@ void pathtraceFree() {
 	cudaFree(dev_first_paths);
 #endif
 	cudaFree(dev_tinyobj);
+
+	//GBuffer
+	cudaFree(dev_gBuffer);
 
 	//BVH
 	cudaFree(dev_tris);
@@ -194,6 +203,31 @@ glm::vec2 ConcentricSampleDisk(const glm::vec2& u)
 	}
 	return r * glm::vec2(std::cos(theta), std::sin(theta));
 }
+
+__global__ void generateGBuffer(
+	int num_paths,
+	ShadeableIntersection* shadeableIntersections,
+	PathSegment* pathSegments,
+	GBufferPixel* gBuffer) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < num_paths)
+	{
+
+		gBuffer[idx].t = shadeableIntersections[idx].t;
+		if (gBuffer[idx].t != -1.0f)
+		{
+			gBuffer[idx].normal = shadeableIntersections[idx].surfaceNormal;
+			gBuffer[idx].position = getPointOnRay(pathSegments[idx].ray, shadeableIntersections[idx].t);
+		}
+		else
+		{
+			gBuffer[idx].normal = glm::vec3(0.0f);
+			gBuffer[idx].position = glm::vec3(0.0f);
+		}
+
+	}
+}
+
 
 /**
 * Generate PathSegments with rays from the camera through the screen into the
@@ -1011,6 +1045,11 @@ void pathtrace(uchar4* pbo, int frame, int iter, std::vector<tensor>& filters, s
 		checkCUDAError("trace one bounce");
 		cudaDeviceSynchronize();
 #endif
+
+		if (depth == 0 && iter == 1)
+		{
+			generateGBuffer << <numblocksPathSegmentTracing, blockSize1d >> > (num_paths, dev_intersections, dev_paths, dev_gBuffer);
+		}
 
 		depth++;
 

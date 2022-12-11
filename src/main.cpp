@@ -46,6 +46,9 @@ static cudnnHandle_t handle;
 static std::vector<layer> model;
 static float* conv_workspace;
 
+bool ui_denoise = false;
+int ui_iterations = 1;
+
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
 //	std::cout << "Running" << std::endl;
@@ -366,8 +369,10 @@ int main(int argc, char** argv) {
 
 	//dnCNN init
 	cudnnCreate(&handle);
+
 	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\");
 	cudaMalloc(&conv_workspace, 4000000);
+
 
 	// Initialize ImGui Data
 	InitImguiData(guiData);

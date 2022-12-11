@@ -19,6 +19,8 @@ class GuiDataContainer
 public:
     GuiDataContainer() : TracedDepth(0) {}
     int TracedDepth;
+    bool denoise;
+    int iteration;
 };
 
 namespace utilityCore {

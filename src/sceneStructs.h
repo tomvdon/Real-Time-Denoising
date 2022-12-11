@@ -21,14 +21,12 @@ struct Ray {
 };
 
 struct AABB {
-    glm::vec3 pMin, pMax;
+    glm::vec3 pMin, pMax, pCentroid;
 
     AABB()
     {
-        float minNum = FLT_MIN;
-        float maxNum = FLT_MAX;
-        pMin = glm::vec3(minNum);
-        pMax = glm::vec3(maxNum);
+        pMin = glm::vec3(100000);
+        pMax = glm::vec3(-100000);
     }
 
     AABB(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3) {
@@ -38,6 +36,38 @@ struct AABB {
         pMin = glm::vec3(fmin(pMin.x, p3.x), fmin(pMin.y, p3.y), fmin(pMin.z, p3.z));
         pMax = glm::vec3(fmax(pMax.x, p3.x), fmax(pMax.y, p3.y), fmax(pMax.z, p3.z));
 
+        float mid_x = (p1.x + p2.x + p3.x) / 3.0;
+        float mid_y = (p1.y + p2.y + p3.y) / 3.0;
+        float mid_z = (p1.z + p2.z + p3.z) / 3.0;
+        pCentroid = glm::vec3(mid_x, mid_y, mid_z);
+    }
+
+    glm::vec3 Diagonal() const { return pMax - pMin; }
+    
+    int maxExtent() const
+    {
+        auto d = Diagonal();
+        if (d.x > d.y && d.x > d.z) { return  0; }
+        else if (d.y > d.x) { return 1; }
+        else { return 2; }
+    }
+
+    void Union(const AABB& b2) {
+        pMin = glm::vec3((std::min)(pMin.x, b2.pMin.x),
+            (std::min)(pMin.y, b2.pMin.y),
+            (std::min)(pMin.z, b2.pMin.z));
+        pMax = glm::vec3((std::max)(pMax.x, b2.pMax.x),
+            (std::max)(pMax.y, b2.pMax.y),
+            (std::max)(pMax.z, b2.pMax.z));
+    }
+
+    void Union(const glm::vec3& p) {
+        pMin = glm::vec3((std::min)(pMin.x, p.x),
+            (std::min)(pMin.y, p.y),
+            (std::min)(pMin.z, p.z));
+        pMax = glm::vec3((std::max)(pMax.x, p.x),
+            (std::max)(pMax.y, p.y),
+            (std::max)(pMax.z, p.z));
     }
 
     bool IntersectP(const Ray& ray) const
@@ -160,39 +190,28 @@ struct Triangle {
 };
 
 
-static AABB Union(const AABB& b1, const AABB& b2) {
-    AABB ret;
-    ret.pMin = glm::vec3((std::min)(b1.pMin.x, b2.pMin.x),
-        (std::min)(b1.pMin.y, b2.pMin.y),
-        (std::min)(b1.pMin.z, b2.pMin.z));
-    ret.pMax = glm::vec3((std::max)(b1.pMax.x, b2.pMax.x),
-        (std::max)(b1.pMax.y, b2.pMax.y),
-        (std::max)(b1.pMax.z, b2.pMax.z));
-    return ret;
-}
-
 struct Obj {
     AABB box;
     Geom* data;
 };
 
 
-struct TriBounds {
-    glm::vec3 AABB_min;
-    glm::vec3 AABB_max;
-    glm::vec3 AABB_centroid;
+struct Bound3s {
+    AABB bbox;
     int tri_ID;
 };
 
-struct BVHNode {
+struct BVHBuildNode {
     glm::vec3 AABB_min;
     glm::vec3 AABB_max;
-    BVHNode* child_nodes[2];
+    BVHBuildNode* left;
+    BVHBuildNode* right;
     int split_axis;
     int tri_index;
 };
 
-struct BVHNode_GPU {
+struct GPUBVHNode {
+    
     glm::vec3 AABB_min;
     glm::vec3 AABB_max;
     int tri_index;
@@ -201,24 +220,18 @@ struct BVHNode_GPU {
 };
 
 struct Tri {
-    // positions
-    glm::vec3 p0;
-    glm::vec3 p1;
-    glm::vec3 p2;
-    // normals
-    glm::vec3 n0;
-    glm::vec3 n1;
-    glm::vec3 n2;
-    // uvs
-    glm::vec2 t0;
-    glm::vec2 t1;
-    glm::vec2 t2;
-    //transforms
-    glm::mat4 transform;
-    glm::mat4 inverseTransform;
-    glm::mat4 invTranspose;
+    glm::vec3 pos[3];
+    glm::vec3 normal[3];
+    glm::vec2 uv[3];
     // plane normal
     glm::vec3 plane_normal;
     float S;
     int mat_ID;
+};
+
+class GBufferPixel {
+public:
+    float t;
+    glm::vec3 normal;
+    glm::vec3 position;
 };

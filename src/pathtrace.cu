@@ -111,6 +111,8 @@ static float* dev_denoise = NULL;
 static tensor input;
 static tensor output;
 
+static int expo;
+
 void InitDataContainer(GuiDataContainer* imGuiData)
 {
 	guiData = imGuiData;
@@ -174,7 +176,7 @@ void pathtraceInit(Scene* scene) {
 
 	output = tensor(1, 64, cam.resolution.y, cam.resolution.x);
 	cudaMalloc(&output.dev, sizeof(float) * 64 * cam.resolution.y * cam.resolution.x);
-
+	expo = 1;
 	checkCUDAError("pathtraceInit");
 }
 
@@ -1196,8 +1198,9 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 
 	dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
 	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
-
-	if (ui_denoise && (iter % ui_iterations == 0)) {
+	std::cout << "Iter is " << iter << " looking for " << expo << std::endl;
+	//if (ui_denoise && (iter % ui_iterations == 0)) {
+	if (ui_denoise && (iter % expo == 0)) {
 		auto dn_start = chrono::high_resolution_clock::now();
 		cudaMemcpy(dev_dn_image, dev_image,
 			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
@@ -1225,8 +1228,9 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		auto dn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dn_end - dn_start);
 		std::cout << "Full denoise: " << dncnn_duration.count() << std::endl;
+		expo = expo * 2 > 256 ? 256 : expo * 2;
 	}
-	else if (!ui_denoise || iter < ui_iterations) { // iter < ui_iter, denoise image does not exist yet, show path traced
+	else if (!ui_denoise) { //|| iter < ui_iterations) { // iter < ui_iter, denoise image does not exist yet, show path traced
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
 	}
 	else {

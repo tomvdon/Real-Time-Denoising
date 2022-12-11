@@ -46,11 +46,11 @@ static cudnnHandle_t handle;
 static std::vector<layer> model;
 static float* conv_workspace;
 
-bool ui_denoise = false;
+bool ui_denoise = true;
 int ui_iterations = 1;
-bool use_gbuff = false;
-int num_layers = 20;
-const static std::string model_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\";
+bool use_gbuff = true;
+int num_layers = 10;
+const static std::string model_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_small\\";
 
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/

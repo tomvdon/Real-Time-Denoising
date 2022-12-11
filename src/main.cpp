@@ -50,6 +50,7 @@ bool ui_denoise = false;
 int ui_iterations = 1;
 bool use_gbuff = false;
 int num_layers = 20;
+const static std::string model_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\";
 
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
@@ -372,7 +373,7 @@ int main(int argc, char** argv) {
 	//dnCNN init
 	cudnnCreate(&handle);
 
-	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\");
+	loadDncnn(handle, model, cam.resolution.y, cam.resolution.x, model_path);
 	cudaMalloc(&conv_workspace, 4000000);
 
 	// Initialize ImGui Data

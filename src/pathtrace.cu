@@ -19,7 +19,7 @@
 
 #define DIRECT 0
 #define CACHE_FIRST_BOUNCE 0
-#define SORT_MATERIAL 1
+#define SORT_MATERIAL 0
 #define COMPACTION 1
 #define DEPTH_OF_FIELD 0
 #define ANTI_ALIASING 0
@@ -939,7 +939,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	
 	const float sub_alpha = -1.f, sub_beta = 1.f;
 	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[num_layers - 1].output_desc, input.dev, //output.dev for non-fusion code
-				&sub_beta, model[0].input_desc, dev_denoise));
+				&sub_beta, model[num_layers - 1].output_desc, dev_denoise));
 
 	auto nn_end = chrono::high_resolution_clock::now();
 	auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
@@ -1216,7 +1216,6 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);
 		std::cout << "Model Time: " << dncnn_duration.count() << std::endl;
 		dncnn_start = chrono::high_resolution_clock::now();
-		checkCUDAError("denoise2");
 		buffToVec << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_dn_image, dev_denoise, cam.resolution, iter);
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_dn_image);
 
@@ -1226,15 +1225,12 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		auto dn_end = chrono::high_resolution_clock::now();
 		dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dn_end - dn_start);
 		std::cout << "Full denoise: " << dncnn_duration.count() << std::endl;
-		checkCUDAError("denoise3");
 	}
-	else if (!ui_denoise) {
+	else if (!ui_denoise || iter < ui_iterations) { // iter < ui_iter, denoise image does not exist yet, show path traced
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, iter, dev_image);
-		checkCUDAError("pbo1");
 	}
 	else {
 		sendImageToPBO << <blocksPerGrid2d, blockSize2d >> > (pbo, cam.resolution, 1, dev_dn_image);
-		checkCUDAError("pbo2");
 	}
 
 	///////////////////////////////////////////////////////////////////////////

@@ -1144,7 +1144,7 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		cudaDeviceSynchronize();
 		auto material_end = chrono::high_resolution_clock::now();
 		auto material_duration = std::chrono::duration_cast<std::chrono::microseconds>(material_end - material_start);
-		std::cout << "Material: " << material_time << std::endl;
+		//std::cout << "Material: " << material_time << std::endl;
 
 		material_time += material_duration.count();
 

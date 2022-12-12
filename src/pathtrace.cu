@@ -860,20 +860,18 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 }
 
 void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
-	auto setup_start = chrono::high_resolution_clock::now();
-
+	//auto setup_start = chrono::high_resolution_clock::now();
 	const Camera& cam = hst_scene->state.camera;
 	std::cout << input.c << std::endl;
 	cudaMemcpy(input.dev, dev_denoise, sizeof(float) * input.c * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
 	const float alpha = 1.f, beta = 0.f, alpha2 = 0.f;
+	//auto setup_end = chrono::high_resolution_clock::now();
+	//auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	//std::cout << "Setup: " << setup_duration.count() << std::endl;
 
-	auto setup_end = chrono::high_resolution_clock::now();
-	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-	std::cout << "setup: " << setup_duration.count() << std::endl;
-
-	auto nn_start = chrono::high_resolution_clock::now();
+	//auto nn_start = chrono::high_resolution_clock::now();
 	for (int i = 0; i < num_layers; ++i) {
-		auto layer_start = chrono::high_resolution_clock::now();
+		//auto layer_start = chrono::high_resolution_clock::now();
 		// Load filter
 		int in_chan = 64;
 		int out_chan = 64;
@@ -885,7 +883,7 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 		}
 
 		if (i != num_layers - 1) {
-			auto fusion_start = chrono::high_resolution_clock::now();
+			//auto fusion_start = chrono::high_resolution_clock::now();
 			checkCUDNN(
 				cudnnConvolutionBiasActivationForward(
 					handle,
@@ -908,20 +906,20 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 					output.dev
 				)
 			);
-			auto fusion_end = chrono::high_resolution_clock::now();
-			auto fusion_dur = std::chrono::duration_cast<std::chrono::microseconds>(fusion_end - fusion_start);
-			std::cout << "Fusion conv " << i << " :" << fusion_dur.count() << std::endl;
+			//auto fusion_end = chrono::high_resolution_clock::now();
+			//auto fusion_dur = std::chrono::duration_cast<std::chrono::microseconds>(fusion_end - fusion_start);
+			//std::cout << "Fusion conv " << i << " :" << fusion_dur.count() << std::endl;
 		}
 		else {
-			auto forward_start = chrono::high_resolution_clock::now();
+			//auto forward_start = chrono::high_resolution_clock::now();
 			// Conv forward
 			convolutionalForward(handle, model[i], input, output, workspace);
 
 			// Add bias, done in place
 			addBias(handle, model[i], output, false);
-			auto forward_end = chrono::high_resolution_clock::now();
-			auto forward_dur = std::chrono::duration_cast<std::chrono::microseconds>(forward_end - forward_start);
-			std::cout << "Normal conv " << i << " :" << forward_dur.count() << std::endl;
+			//auto forward_end = chrono::high_resolution_clock::now();
+			//auto forward_dur = std::chrono::duration_cast<std::chrono::microseconds>(forward_end - forward_start);
+			//std::cout << "Normal conv " << i << " :" << forward_dur.count() << std::endl;
 		}
 		// we dont actually use these anywhere, could just have the tensors be float*
 		//input.n = output.n;
@@ -932,18 +930,18 @@ void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 		float* temp = input.dev;
 		input.dev = output.dev;
 		output.dev = temp;
-		auto layer_end = chrono::high_resolution_clock::now();
-		auto layer_dur = std::chrono::duration_cast<std::chrono::microseconds>(layer_end - layer_start);
-		std::cout << "layer " << i << " :" << layer_dur.count() << std::endl;
+		//auto layer_end = chrono::high_resolution_clock::now();
+		//auto layer_dur = std::chrono::duration_cast<std::chrono::microseconds>(layer_end - layer_start);
+		//std::cout << "layer " << i << " :" << layer_dur.count() << std::endl;
 	}
 	
 	const float sub_alpha = -1.f, sub_beta = 1.f;
 	checkCUDNN(cudnnAddTensor(handle, &sub_alpha, model[num_layers - 1].output_desc, input.dev, //output.dev for non-fusion code
 				&sub_beta, model[num_layers - 1].output_desc, dev_denoise));
 
-	auto nn_end = chrono::high_resolution_clock::now();
-	auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
-	std::cout << "NN DUR: " << nn_duration.count() << std::endl;
+	//auto nn_end = chrono::high_resolution_clock::now();
+	//auto nn_duration = std::chrono::duration_cast<std::chrono::microseconds>(nn_end - nn_start);
+	//std::cout << "Model Forward: " << nn_duration.count() << std::endl;
 }
 
 /**
@@ -1210,11 +1208,9 @@ void pathtrace(uchar4* pbo, cudnnHandle_t handle, std::vector<layer>& model, int
 		auto dn_start = chrono::high_resolution_clock::now();
 		cudaMemcpy(dev_dn_image, dev_image,
 			pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToDevice);
-		std::cout << "Denoising" << std::endl;
+		//std::cout << "Denoising" << std::endl;
 		// Denoise
-		//TODO the way opencv and likely cudnn works is mirrored from the PBO, does this affect denoising?
 		auto dncnn_start = chrono::high_resolution_clock::now();
-
 		vecToBuff << <blocksPerGrid2d, blockSize2d >> > (pixelcount, dev_dn_image, dev_denoise, cam.resolution, iter);
 		auto dncnn_end = chrono::high_resolution_clock::now();
 		auto dncnn_duration = std::chrono::duration_cast<std::chrono::microseconds>(dncnn_end - dncnn_start);

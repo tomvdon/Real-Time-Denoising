@@ -159,7 +159,7 @@ void readBias(int channels, tensor& output, std::string bias_path) {
 }
 
 void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor& output, float* workspace) {
-	auto setup_start = chrono::high_resolution_clock::now();
+	//auto setup_start = chrono::high_resolution_clock::now();
 	// Do convolution forward
 	const float alpha = 1, beta = 0;
 	checkCUDNN(cudnnConvolutionForward(handle,
@@ -176,9 +176,9 @@ void convolutionalForward(cudnnHandle_t handle, layer& l, tensor& input, tensor&
 		l.output_desc,
 		output.dev));
 
-	auto setup_end = chrono::high_resolution_clock::now();
-	auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
-	std::cout << "conv forward: " << setup_duration.count() << std::endl;
+	//auto setup_end = chrono::high_resolution_clock::now();
+	//auto setup_duration = std::chrono::duration_cast<std::chrono::microseconds>(setup_end - setup_start);
+	//std::cout << "conv forward: " << setup_duration.count() << std::endl;
 }
 
 void addBias(cudnnHandle_t handle, layer& l, tensor& input, bool subtract) {

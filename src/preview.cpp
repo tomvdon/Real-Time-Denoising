@@ -200,7 +200,7 @@ void drawGui(int windowWidth, int windowHeight) {
 	ImGui::NewFrame();
 
 	// Dear imgui define
-	ImVec2 minSize(300.f, 100.f);
+	ImVec2 minSize(350.f, 120.f);
 	ImVec2 maxSize((float)windowWidth * 0.5, (float)windowHeight * 0.25);
 	ImGui::SetNextWindowSizeConstraints(minSize, maxSize);
 
@@ -216,7 +216,8 @@ void drawGui(int windowWidth, int windowHeight) {
 
 	ImGui::Checkbox("Denoise", &ui_denoise);
 
-	ImGui::SliderInt("Iteration", &ui_iterations, 1, 100);
+	ImGui::SliderInt("Iteration", &ui_iterations, 1, 32);
+	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
 
 	ImGui::Separator();

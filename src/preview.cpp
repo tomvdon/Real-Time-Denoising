@@ -5,6 +5,8 @@
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_glfw.h"
 #include "ImGui/imgui_impl_opengl3.h"
+
+#define IMGUI_IMPL_OPENGL_LOADER_GLEW
 GLuint positionLocation = 0;
 GLuint texcoordsLocation = 1;
 GLuint pbo;
@@ -162,12 +164,7 @@ bool init() {
 	printf("Opengl Version:%s\n", glGetString(GL_VERSION));
 	//Set up ImGui
 
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	io = &ImGui::GetIO(); (void)io;
-	ImGui::StyleColorsLight();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 120");
+
 
 	// Initialize other stuff
 	initVAO();
@@ -179,7 +176,55 @@ bool init() {
 	glUseProgram(passthroughProgram);
 	glActiveTexture(GL_TEXTURE0);
 
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+
+	//// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+
+	// Setup Platform/Renderer bindings
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 130");
+
 	return true;
+}
+
+static ImGuiWindowFlags windowFlags = ImGuiWindowFlags_None | ImGuiWindowFlags_NoMove;
+static bool ui_hide = false;
+
+void drawGui(int windowWidth, int windowHeight) {
+	// Dear imgui new frame
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	// Dear imgui define
+	ImVec2 minSize(300.f, 100.f);
+	ImVec2 maxSize((float)windowWidth * 0.5, (float)windowHeight * 0.25);
+	ImGui::SetNextWindowSizeConstraints(minSize, maxSize);
+
+	ImGui::SetNextWindowPos(ui_hide ? ImVec2(-1000.f, -1000.f) : ImVec2(0.0f, 0.0f));
+
+	ImGui::Begin("Control Panel", 0, windowFlags);
+	ImGui::SetWindowFontScale(1);
+
+	ImGui::Text("press H to hide GUI completely.");
+	if (ImGui::IsKeyPressed('H')) {
+		ui_hide = !ui_hide;
+	}
+
+	ImGui::Checkbox("Denoise", &ui_denoise);
+
+	ImGui::SliderInt("Iteration", &ui_iterations, 1, 100);
+
+
+	ImGui::Separator();
+
+	ImGui::End();
+
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void InitImguiData(GuiDataContainer* guiData)
@@ -260,7 +305,10 @@ void mainLoop() {
 		glDrawElements(GL_TRIANGLES, 6,  GL_UNSIGNED_SHORT, 0);
 
 		// Render ImGui Stuff
-		RenderImGui();
+				// Draw imgui
+		int display_w, display_h;
+		glfwGetFramebufferSize(window, &display_w, &display_h);
+		drawGui(display_w, display_h);
 
 		glfwSwapBuffers(window);
 	}

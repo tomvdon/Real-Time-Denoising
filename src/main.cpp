@@ -9,6 +9,9 @@
 #include <cudnn.h>
 #include "opencv2\opencv.hpp"
 #include "opencv2\highgui.hpp"
+#include "ImGui/imgui.h"
+#include "ImGui/imgui_impl_glfw.h"
+#include "ImGui/imgui_impl_opengl3.h"
 
 
 static std::string startTimeString;
@@ -46,11 +49,11 @@ static cudnnHandle_t handle;
 static std::vector<layer> model;
 static float* conv_workspace;
 
-bool ui_denoise = false;
+bool ui_denoise = true;
 int ui_iterations = 1;
-bool use_gbuff = false;
-int num_layers = 20;
-const static std::string model_path = "C:\\Users\\ryanr\\Desktop\\Penn\\22-23\\CIS565\\Real-Time-Denoising-And-Upscaling\\dnCNN\\weights_renamed\\";
+bool use_gbuff = true;
+int num_layers = 10;
+const static std::string model_path = "..\\dnCNN\\weights_bunny\\";
 
 //void tryCUDNN() {
 //	// Credit http://www.goldsborough.me/cuda/ml/cudnn/c++/2017/10/01/14-37-23-convolutions_with_cudnn/
@@ -339,7 +342,7 @@ int main(int argc, char** argv) {
 	scene = new Scene(sceneFile);
 
 	//Create Instance for ImGUIData
-	guiData = new GuiDataContainer();
+	
 
 	// Set up camera stuff from loaded path tracer settings
 	iteration = 0;
@@ -377,8 +380,7 @@ int main(int argc, char** argv) {
 	cudaMalloc(&conv_workspace, 4000000);
 
 	// Initialize ImGui Data
-	InitImguiData(guiData);
-	InitDataContainer(guiData);
+
 
 	// GLFW main loop
 	mainLoop();
@@ -505,6 +507,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+	if (ImGui::GetIO().WantCaptureMouse) return;
 	if (MouseOverImGuiWindow())
 	{
 		return;

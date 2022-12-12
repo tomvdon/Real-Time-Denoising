@@ -862,7 +862,6 @@ __global__ void buffToVec(int numPixels, glm::vec3* image, float* denoise, glm::
 void dnCNN(cudnnHandle_t handle, std::vector<layer>& model, float* workspace) {
 	//auto setup_start = chrono::high_resolution_clock::now();
 	const Camera& cam = hst_scene->state.camera;
-	std::cout << input.c << std::endl;
 	cudaMemcpy(input.dev, dev_denoise, sizeof(float) * input.c * cam.resolution.y * cam.resolution.x, cudaMemcpyDeviceToDevice);
 	const float alpha = 1.f, beta = 0.f, alpha2 = 0.f;
 	//auto setup_end = chrono::high_resolution_clock::now();

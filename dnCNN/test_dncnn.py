@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
     #model_path = 'original_dncnn.pth'
     #model_path = 'weights_small/9Channel_10_layers_15000.pth'
-    model_path = '200000_G.pth'
+    model_path = 'weights_renamed/200000_G.pth'
     # From Kai Zhang, dnnn_color_blind is nb=20
     # act_mode determines what the actiavation is, for example: BR == batch norm + ReLU
     # R == ReLU, we can ignore batch norm since utils_bnorm.merge_bn was ran, see https://github.com/cszn/KAIR/blob/master/utils/utils_bnorm.py 
@@ -64,11 +64,10 @@ if __name__ == '__main__':
         if name_list[-1] == 'weight':
             param = torch.flatten(param, start_dim=0, end_dim=1) 
             param = torch.flatten(param, start_dim=1, end_dim=2)
-        np.savetxt('weights_renamed/' + str(int(i/2)) + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
+        #np.savetxt('weights_renamed/' + str(int(i/2)) + '_' + name_list[2] + '.csv', param.numpy(), delimiter=',')
         i += 1
-    import pdb
-    pdb.set_trace()
-    img_path = 'test.png'
+
+    img_path = 'test3.png'
     img = torchvision.io.read_image(img_path) # reads as C,H,W 0-255
     img = (img / 255.)#[:3]# 0-255 -> 0-1
     plt.imshow(img.permute(1,2,0))
@@ -143,10 +142,7 @@ if __name__ == '__main__':
     plt.imshow((img - out_img.detach().cpu()).squeeze().permute(1,2,0).cpu())
     plt.show()
 
-    out_img_r = np.genfromtxt('img_log/out_img_chan0.txt', delimiter=',').reshape(481, 321)
-    out_img_g = np.genfromtxt('img_log/out_img_chan1.txt', delimiter=',').reshape(481, 321)
-    out_img_b = np.genfromtxt('img_log/out_img_chan2.txt', delimiter=',').reshape(481, 321)
-
-    import pdb
-    pdb.set_trace()
+    # out_img_r = np.genfromtxt('img_log/out_img_chan0.txt', delimiter=',').reshape(481, 321)
+    # out_img_g = np.genfromtxt('img_log/out_img_chan1.txt', delimiter=',').reshape(481, 321)
+    # out_img_b = np.genfromtxt('img_log/out_img_chan2.txt', delimiter=',').reshape(481, 321)
 

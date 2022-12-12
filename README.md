@@ -54,13 +54,15 @@ The DNCNN is a fully convolutional model that is able to learn a noise residual 
 ## Model Training
 We fine tune the model using the collected dataset so that we get better denoising performance on the path traced scenes. We fine-tune by using training code and a trained model provided by the author [here](https://github.com/cszn/KAIR). The authors' trained model weights can be downloaded [here](https://drive.google.com/drive/folders/13kfr3qny7S2xwG9h7v95F5mkWs0OmU0D). Specifically, we use the noise blind color DNCNN model which is trained on noisy color images from the [CBSD68 dataset](https://github.com/cszn/FFDNet/tree/master/testsets/CBSD68). We modify the author's code repo to better suit our training task in [this repo](https://github.com/tomvdon/GBuffer_DnCNN) 
 
-## Model Results
+## Model Input
 We first fine tuned the DNCNN model as is using our collected dataset and got the following results:
-TODO ADD IMAGES OF 1SPP VS 16SPP VS DENOISED VS GT
+
 Input | Input | Ground Truth
 :-------------------------:|:-------------------------:|:-------------------------:
-![](img/1_spp.png) | ![](img/16d_spp.png)  |  ![](img/5000_spp.png) 
-Input | Model Output | Ground Truth 
+![](img/1_spp.png) | ![](img/16_spp.png)  |  ![](img/5000_spp.png)    
+## Model Results
+
+Model Output | Model Output | Ground Truth 
 :-------------------------:|:-------------------------:|:-------------------------:
 ![](img/3c20L_1spp.png) | ![](img/3C20L16_spp.png)   |  ![](img/5000_spp.png) 
 Image after 1 spp of path tracing | Image after 16 spp of path tracing | Ground Truth 
@@ -68,7 +70,7 @@ Image after 1 spp of path tracing | Image after 16 spp of path tracing | Ground 
 ## Smaller Model Results
 We then decided to halve the number of layers to 10 and incorporate GBuffer data into the input channel (increasing it from 3-9) to get faster inference speed due to less layers of convolution.
 
-Input | Model Output | Ground Truth 
+Model Output | Model Output | Ground Truth 
 :-------------------------:|:-------------------------:|:-------------------------:
 ![](img/9C_10L_1spp.png) | ![](img/9C_10L_16spp.png)   |  ![](img/5000_spp.png) 
 Image after 1 spp of path tracing | Image after 16 spp of path tracing

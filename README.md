@@ -1,7 +1,7 @@
 # Real Time Denoising for CUDA Path Tracer using cuDNN
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Final Project**
 
-- Members: [Tom Donnelly](https://www.linkedin.com/in/the-tom-donnelly/), Shixuan Fang, [Ryan Tong](https://www.linkedin.com/in/ryanctong/)
+- Members: [Tom Donnelly](https://www.linkedin.com/in/the-tom-donnelly/), [Shixuan Fang](https://www.linkedin.com/in/shixuan-fang-4aba78222/), [Ryan Tong](https://www.linkedin.com/in/ryanctong/)
 
 - Tested on: Windows 11, AMD Ryzen 9 5900X, NVIDIA GeForce RTX 3070 (Personal Desktop)
 
